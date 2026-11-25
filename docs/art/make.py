@@ -1,4 +1,4 @@
-"""Draws docs/header.svg.
+"""Draws the pictures in docs/: header.svg, two-cells.svg and one-rule.svg.
 
     python3 -I docs/art/make.py
 
@@ -185,7 +185,76 @@ def header():
     return s
 
 
+def wrap(s, start, cls):
+    """Everything drawn since `start` becomes one group with a class, so it can be animated together."""
+    inner = "".join(s.items[start:])
+    del s.items[start:]
+    s.items.append(f'<g class="{cls}">{inner}</g>')
+
+
+def two_cells():
+    """Two given cells, and the one table they force, written in cell by cell."""
+    s = Sketch(1280, 460, 5)
+    u, top, lx, rx = 64, 96, 120, 800
+    givens = ((1, 1), (2, 3))
+    for r, c in givens:
+        cell(s, lx, top, u, r, c, BLUE_F)
+    grid(s, lx, top, 5, u)
+    for r, c in givens:
+        s.text(lx + (c + .5) * u, top + (r + .5) * u + 11, str((r + c) % 5), 32, anchor="middle")
+    s.text(lx, 62, "two cells are given", 26, color=BLUE)
+    s.arrow(lx + 5 * u + 50, top + 2.5 * u, 630, top + 1.8 * u, rx - 50, top + 2.5 * u, color=SOFT)
+    s.text(630, top + 1.7 * u - 26, "only one group fits", 24, color=SOFT, anchor="middle")
+    s.text(rx, 62, "so the whole table follows", 26, color=PINK)
+    grid(s, rx, top, 5, u)
+    # the shorthand must come before the per-cell delays, or it resets them
+    s.css.append(".w{opacity:0;animation:write 11s linear infinite}"
+                 "@keyframes write{0%{opacity:0}3%,78%{opacity:1}86%,100%{opacity:0}}"
+                 "@media (prefers-reduced-motion:reduce){.w{animation:none;opacity:1}}")
+    order = sorted(((r, c) for r in range(5) for c in range(5)), key=lambda rc: (rc not in givens, (rc[0] + rc[1]) % 5 != 0, rc))
+    for i, (r, c) in enumerate(order):
+        v, start = (r + c) % 5, len(s.items)
+        if (r, c) in givens:
+            cell(s, rx, top, u, r, c, BLUE_F)
+        elif v == 0:
+            cell(s, rx, top, u, r, c, PINK_F)
+        s.text(rx + (c + .5) * u, top + (r + .5) * u + 11, str(v), 32, anchor="middle",
+               color=None if (r, c) in givens or v == 0 else SOFT)
+        if (r, c) not in givens:
+            wrap(s, start, f"w w{i}")
+            s.css.append(f".w{i}{{animation-delay:{1 + (i - 2) * .22:.2f}s}}")
+    return s
+
+
+def one_rule():
+    """Associativity: bracket a, b, c either way and you land on the same cell."""
+    s = Sketch(1280, 400, 3)
+    y, w, h, xs = 150, 92, 92, (170, 370, 570)
+    for x, lab in zip(xs, "abc"):
+        s.box(x, y, w, h, GREY_F)
+        s.text(x + w / 2, y + h / 2 + 12, lab, 36, anchor="middle")
+    start = len(s.items)
+    s.curve([(xs[0] + w / 2, y - 14), ((xs[0] + xs[1] + w) / 2, y - 92), (xs[1] + w / 2, y - 14)], BLUE, 2.6)
+    s.text((xs[0] + xs[1] + w) / 2, y - 72, "these two first", 24, color=BLUE, anchor="middle")
+    s.arrow((xs[0] + xs[1] + w) / 2 + 100, y - 66, 760, y - 120, 936, y + 16, color=BLUE)
+    wrap(s, start, "way one")
+    start = len(s.items)
+    s.curve([(xs[1] + w / 2, y + h + 14), ((xs[1] + xs[2] + w) / 2, y + h + 92), (xs[2] + w / 2, y + h + 14)], PINK, 2.6)
+    s.text((xs[1] + xs[2] + w) / 2, y + h + 96, "or these two first", 24, color=PINK, anchor="middle")
+    s.arrow((xs[1] + xs[2] + w) / 2 + 120, y + h + 76, 830, y + h + 110, 936, y + h - 16, color=PINK)
+    wrap(s, start, "way two")
+    s.box(950, y, w, h, YELLOW_F)
+    s.text(950 + w / 2, y + h / 2 + 12, "?", 36, anchor="middle")
+    s.text(950 + w + 24, y + h / 2 + 8, "same cell", 24, color=SOFT)
+    s.text(1184, 372, "(a·b)·c = a·(b·c)", 24, "m", color=SOFT, anchor="end")
+    s.css.append(".way{animation:take 6s ease-in-out infinite}.two{animation-delay:-3s}"
+                 "@keyframes take{0%,40%{opacity:1}50%,90%{opacity:.18}100%{opacity:1}}"
+                 "@media (prefers-reduced-motion:reduce){.way{animation:none}}")
+    return s
+
+
 if __name__ == "__main__":
-    path = os.path.join(DOCS, "header.svg")
-    open(path, "w").write(header().svg())
-    print(path, os.path.getsize(path))
+    for name, draw in (("header", header), ("two-cells", two_cells), ("one-rule", one_rule)):
+        path = os.path.join(DOCS, name + ".svg")
+        open(path, "w").write(draw().svg())
+        print(path, os.path.getsize(path))

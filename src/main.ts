@@ -224,9 +224,16 @@ function mini(g: GroupInfo): string {
 function top(): string {
   const nav = (id: Tab, key: Key) => `<button data-tab="${id}" class="${!game && tab === id ? 'on' : ''}">${t(key)}</button>`
   const flag = (on: boolean) => `<b>${t(on ? 'on' : 'off')}</b>`
+  const toggles = `<div class="toggles"><button data-toggle="sound">${t('sound')} ${flag(save.sound)}</button><button data-toggle="lang">${getLang() === 'en' ? '中文' : 'English'}</button></div>`
+  if (game) {
+    // while a table is open the bar is just: back, what this is, and the switches
+    const g = game, title = g.mode === 'puzzle' ? `${orderOf(g.n)} · ${t(g.difficulty)}` : `${t('build')} · ${orderOf(g.n)}`
+    return `<header class="top"><button data-back class="back" aria-label="${t('back')}">←</button><h2>${title}</h2>
+      <span class="meta">${g.hints ? `${t('hintsUsed')} ${g.hints}` : ''}</span>${toggles}</header>`
+  }
   return `<header class="top"><button class="word" data-tab="puzzles">symmetry</button>
     <nav>${nav('puzzles', 'puzzles')}${nav('build', 'build')}${nav('collection', 'collection')}</nav>
-    <div class="toggles"><button data-toggle="sound">${t('sound')} ${flag(save.sound)}</button><button data-toggle="lang">${getLang() === 'en' ? '中文' : 'English'}</button></div></header>`
+    ${toggles}</header>`
 }
 
 function home(): string {
@@ -234,20 +241,22 @@ function home(): string {
     const entries = GROUPS.map((g) => save.found.includes(g.id)
       ? `<div class="entry">${mini(g)}<div><div class="name">${g.name}<small>${orderOf(g.order)}</small></div><p>${esc(about(g.id, g.order))}</p></div></div>`
       : `<div class="entry missing"><div class="q">?</div><div><div class="name">?<small>${orderOf(g.order)}</small></div><p>${t('notFound')}</p></div></div>`).join('')
-    return `<p class="lede">${save.found.length} / ${GROUPS.length}</p><p class="note">${t('collectionIntro')}</p><div class="collection">${entries}</div>`
+    return `<p class="count">${save.found.length} / ${GROUPS.length}</p><p class="note">${t('collectionIntro')}</p><div class="collection">${entries}</div>`
   }
   const puzzles = tab === 'puzzles'
   const cards = ORDERS.map((n) => {
     const gs = groupsOfOrder(n)
-    const names = gs.map((g) => (save.found.includes(g.id) ? `<b>${g.name}</b>` : '?')).join(' · ')
+    // one pip per group of this order; found ones are filled in and named
+    const pips = gs.map((g) => (save.found.includes(g.id) ? `<i class="pip on" title="${g.name}"></i>` : '<i class="pip"></i>')).join('')
+    const names = gs.filter((g) => save.found.includes(g.id)).map((g) => g.name).join(' ')
     const count = save.solved[`${n}:${save.difficulty}`] ?? 0
-    return `<button class="card" data-start="${n}"><span class="n">${n}<small>${t('order')}</small></span><span class="names">${names}</span>${puzzles && count ? `<span class="done">${t('solved')} ${count}</span>` : ''}</button>`
+    return `<button class="card" data-start="${n}"><span class="n">${n}</span>${puzzles && count ? `<span class="done">×${count}</span>` : ''}<span class="pips">${pips}</span><span class="names">${names}</span></button>`
   }).join('')
   const levels = DIFFICULTIES.map((d) => `<button data-level="${d}" class="${save.difficulty === d ? 'on' : ''}">${t(d)}</button>`).join('')
-  return `<p class="lede">${t(puzzles ? 'tagline' : 'buildIntro')}</p>
+  return `<div class="home"><div class="intro"><p class="lede">${t(puzzles ? 'tagline' : 'buildIntro')}</p>
     ${puzzles ? `<div class="levels">${levels}</div><p class="note">${t((save.difficulty + 'Note') as Key)}</p>` : ''}
-    <div class="orders">${cards}</div>
-    <div class="rules"><h3>${t('rules')}</h3><ol><li>${t('rule1')}</li><li>${t('rule2')}</li></ol><p>${t('rulesMore')}</p></div>`
+    <div class="rules"><h3>${t('rules')}</h3><ol><li>${t('rule1')}</li><li>${t('rule2')}</li></ol><p>${t('rulesMore')}</p></div></div>
+    <div><p class="pick">${t('pickOrder')}</p><div class="orders">${cards}</div></div></div>`
 }
 
 function facts(g: Game): string {
@@ -278,10 +287,8 @@ function reveal(g: Game): string {
 function play(g: Game): string {
   const n = g.n
   const chips = [...Array(n).keys()].map((v) => `<button data-put="${v}" style="background:${tint(v, n)}">${L(v)}</button>`).join('')
-  const title = g.mode === 'puzzle' ? `${orderOf(n)} · ${t(g.difficulty)}` : `${t('build')} · ${orderOf(n)}`
   const say = g.head >= 0 && !g.say.text ? t('swapHint') : g.say.text
-  return `<div class="playhead"><button data-back class="meta">← ${t('back')}</button><h2>${title}</h2>${g.hints ? `<span class="meta">${t('hintsUsed')} ${g.hints}</span>` : ''}</div>
-    <div class="play"><div class="boardcol">${board(g)}${g.done ? '' : `<div class="chips">${chips}<button class="wide" data-put="-1">${t('erase')}</button></div>`}</div>
+  return `<div class="play"><div class="boardcol">${board(g)}${g.done ? '' : `<div class="chips">${chips}<button class="wide" data-put="-1">${t('erase')}</button></div>`}</div>
     <div class="side">
       ${g.done ? `<div class="actions"><button data-act="next" class="main">${t(g.mode === 'puzzle' ? 'next' : 'restart')}</button></div>${reveal(g)}` : `<div class="say ${g.say.tone}">${esc(say)}</div>
       <div class="actions">
