@@ -1,7 +1,8 @@
 // Hand-drawn strokes: every line is drawn twice, a little off, with a slight bow.
 import { mulberry32, type Rng } from './core/generate.ts'
 
-export const INK = '#1e1e1e', SOFT = '#868e96', BLUE = '#1971c2', PINK = '#c2255c', RED = '#e03131', PAPER = '#fdfcf8'
+// chalk on a night sky
+export const INK = '#ece8dc', SOFT = '#7f879c', BLUE = '#74c0fc', PINK = '#f783ac', RED = '#ff6b6b', NIGHT = '#12141f'
 
 export class Pen {
   private r: Rng
@@ -37,11 +38,11 @@ export class Pen {
   }
 }
 
-/** one colour per element, spread around the wheel and kept pale: the labels carry the meaning, the colour shows the pattern */
+/** one colour per element, spread around the wheel: the labels carry the meaning, the colour shows the pattern */
 export const hue = (v: number, n: number) => Math.round((v * 360) / n + 205) % 360
-export const tint = (v: number, n: number) => `hsl(${hue(v, n)} 85% 93%)`
-export const stroke = (v: number, n: number) => `hsl(${hue(v, n)} 62% 74%)`
-export const deep = (v: number, n: number) => `hsl(${hue(v, n)} 55% 42%)`
+export const tint = (v: number, n: number) => `hsl(${hue(v, n)} 38% 19%)`
+export const stroke = (v: number, n: number) => `hsl(${hue(v, n)} 48% 40%)`
+export const glow = (v: number, n: number) => `hsl(${hue(v, n)} 85% 72%)`
 
 /** pencil hatching for each element, as SVG patterns */
 export function hatchDefs(n: number, prefix: string): string {
