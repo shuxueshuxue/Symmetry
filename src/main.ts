@@ -32,7 +32,6 @@ interface Game {
 const save = load()
 setLang(save.lang)
 audio.soundOn = save.sound
-audio.musicOn = save.music
 const rng = mulberry32((Date.now() ^ (Math.random() * 2 ** 31)) >>> 0)
 
 let tab: Tab = 'puzzles'
@@ -41,8 +40,6 @@ let game: Game | undefined
 const app = document.getElementById('app')!
 const L = (v: number) => LABELS[v]
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
-
-audio.source = () => (game ? { n: game.n, cells: game.cells } : undefined) as ReturnType<NonNullable<typeof audio.source>>
 
 // ------------------------------------------------------------------------------------------ game
 
@@ -229,7 +226,7 @@ function top(): string {
   const flag = (on: boolean) => `<b>${t(on ? 'on' : 'off')}</b>`
   return `<header class="top"><button class="word" data-tab="puzzles">symmetry</button>
     <nav>${nav('puzzles', 'puzzles')}${nav('build', 'build')}${nav('collection', 'collection')}</nav>
-    <div class="toggles"><button data-toggle="sound">${t('sound')} ${flag(save.sound)}</button><button data-toggle="music">${t('music')} ${flag(save.music)}</button><button data-toggle="lang">${getLang() === 'en' ? '中文' : 'English'}</button></div></header>`
+    <div class="toggles"><button data-toggle="sound">${t('sound')} ${flag(save.sound)}</button><button data-toggle="lang">${getLang() === 'en' ? '中文' : 'English'}</button></div></header>`
 }
 
 function home(): string {
@@ -284,28 +281,29 @@ function play(g: Game): string {
   const title = g.mode === 'puzzle' ? `${orderOf(n)} · ${t(g.difficulty)}` : `${t('build')} · ${orderOf(n)}`
   const say = g.head >= 0 && !g.say.text ? t('swapHint') : g.say.text
   return `<div class="playhead"><button data-back class="meta">← ${t('back')}</button><h2>${title}</h2>${g.hints ? `<span class="meta">${t('hintsUsed')} ${g.hints}</span>` : ''}</div>
-    <div class="play"><div>${board(g)}${g.done ? '' : `<div class="chips">${chips}<button class="wide" data-put="-1">${t('erase')}</button></div>`}</div>
+    <div class="play"><div class="boardcol">${board(g)}${g.done ? '' : `<div class="chips">${chips}<button class="wide" data-put="-1">${t('erase')}</button></div>`}</div>
     <div class="side">
-      ${g.done ? reveal(g) : `<div class="say ${g.say.tone}">${esc(say)}</div>`}
+      ${g.done ? `<div class="actions"><button data-act="next" class="main">${t(g.mode === 'puzzle' ? 'next' : 'restart')}</button></div>${reveal(g)}` : `<div class="say ${g.say.tone}">${esc(say)}</div>
       <div class="actions">
-        ${g.done ? '' : `${g.mode === 'puzzle' ? `<button data-act="hint">${t('hint')}</button>` : ''}<button data-act="undo" ${g.history.length ? '' : 'disabled'}>${t('undo')}</button><button data-act="restart" ${g.history.length ? '' : 'disabled'}>${t('restart')}</button>`}
-        <button data-act="next" class="${g.done ? 'main' : ''}">${t(g.mode === 'puzzle' ? 'next' : 'restart')}</button>
-        ${g.mode === 'build' && !g.done ? `<label title="${t('autofillNote')}"><input type="checkbox" data-autofill ${save.autofill ? 'checked' : ''}>${t('autofill')}</label>` : ''}
-      </div>
+        ${g.mode === 'puzzle' ? `<button data-act="hint">${t('hint')}</button>` : ''}<button data-act="undo" ${g.history.length ? '' : 'disabled'}>${t('undo')}</button><button data-act="restart" ${g.history.length ? '' : 'disabled'}>${t('restart')}</button>
+        ${g.mode === 'puzzle' ? `<button data-act="next">${t('next')}</button>` : ''}
+        ${g.mode === 'build' ? `<label title="${t('autofillNote')}"><input type="checkbox" data-autofill ${save.autofill ? 'checked' : ''}>${t('autofill')}</label>` : ''}
+      </div>`}
       ${facts(g)}
     </div></div>`
 }
 
 function render() {
+  app.classList.toggle('playing', !!game)
   app.innerHTML = top() + (game ? play(game) : home())
 }
 
 // ----------------------------------------------------------------------------------------- input
 
 function boardClick(ev: MouseEvent, svg: SVGSVGElement) {
-  const g = game!, n = g.n, box = svg.getBoundingClientRect()
-  const scale = (SIZE + 12) / box.width, u = SIZE / (n + 1)
-  const c = Math.floor(((ev.clientX - box.left) * scale - 6) / u) - 1, r = Math.floor(((ev.clientY - box.top) * scale - 6) / u) - 1
+  const g = game!, n = g.n, u = SIZE / (n + 1)
+  const at = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(svg.getScreenCTM()!.inverse())
+  const c = Math.floor(at.x / u) - 1, r = Math.floor(at.y / u) - 1
   if (r >= n || c >= n || (r < 0 && c < 0)) return
   if (r < 0 || c < 0) {
     const x = r < 0 ? c : r
@@ -337,7 +335,6 @@ app.addEventListener('click', (ev) => {
   else if (d.act === 'restart') restart()
   else if (d.act === 'next' && game) start(game.mode, game.n)
   else if (d.toggle === 'sound') { save.sound = audio.soundOn = !save.sound; store(save); render() }
-  else if (d.toggle === 'music') { save.music = audio.musicOn = !save.music; store(save); render() }
   else if (d.toggle === 'lang') { save.lang = getLang() === 'en' ? 'zh' : 'en'; setLang(save.lang); store(save); if (game && !game.say.tone) game.say.text = ''; render() }
 })
 

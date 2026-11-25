@@ -2,7 +2,7 @@
 
 **A puzzle game about group theory: fill in a multiplication table and find out which group you made.**
 
-**[Play it in the browser](https://shuxueshuxue.github.io/Symmetry-A-Group-theory-Game/)**
+**[Play it in the browser](https://shuxueshuxue.github.io/Symmetry/)**
 
 - **The rules are the axioms.** Each element appears once in every row and column, and
   `(a·b)·c = a·(b·c)`. That is the whole definition of a group, and it is all you need to play.
@@ -17,8 +17,7 @@
 - **Build mode.** Start from an empty table, make any group you like, and see which one it is.
 - **Swap two elements** and the same group shows a different pattern. Bring a normal subgroup
   to the front and the table falls into blocks: the blocks are the quotient group.
-- **Sound made from the table.** Every element is a note, and the music is the table being read
-  cell by cell, so it fills in as you do.
+- **Every element is a note.** Placing a value plays it, and a finished table plays itself back.
 
 English and 中文. Nothing to install, nothing sent anywhere; progress is kept in the browser.
 

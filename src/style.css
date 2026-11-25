@@ -39,17 +39,30 @@ nav button:hover, .toggles button:hover { color: var(--ink); }
 .rules ol { margin: 0; padding-left: 22px; }
 .rules p { margin: 6px 0 0; color: var(--soft); font-size: 16px; }
 
-.play { display: grid; grid-template-columns: minmax(0, 620px) minmax(240px, 1fr); gap: 28px; margin-top: 18px; align-items: start; }
-@media (max-width: 860px) { .play { grid-template-columns: 1fr; } }
-.playhead { display: flex; gap: 14px; align-items: baseline; margin-top: 18px; }
+/* The table screen is one screen: the board takes whatever the window's height leaves, and nothing scrolls. */
+#app.playing { height: 100dvh; max-width: none; padding: 12px 24px 14px; display: flex; flex-direction: column; overflow: hidden; }
+#app.playing header.top { padding-bottom: 8px; }
+#app.playing .word { font-size: 24px; }
+.playhead { display: flex; gap: 14px; align-items: baseline; margin-top: 10px; }
+.play { flex: 1; min-height: 0; display: flex; gap: 28px; margin-top: 8px; }
+.boardcol { --side: min(100dvh - 178px, 100vw - 360px); width: max(260px, var(--side)); flex: none; display: flex; flex-direction: column; }
+.side { flex: 0 1 380px; min-width: 250px; overflow-y: auto; padding: 2px 8px 2px 2px; }
+@media (max-width: 760px) {
+  #app.playing { padding: 8px 12px; }
+  #app.playing header.top .toggles, #app.playing nav { display: none; }
+  .play { flex-direction: column; gap: 10px; justify-content: flex-start; }
+  .boardcol { --side: min(100dvh - 330px, 100vw - 24px); margin: 0 auto; }
+  .side { flex: 1; min-height: 0; min-width: 0; }
+  .say { min-height: 0; }
+}
 .playhead h2 { font-size: 24px; font-weight: normal; margin: 0; }
 .playhead .meta { color: var(--soft); }
 .board { width: 100%; display: block; touch-action: manipulation; user-select: none; cursor: pointer; }
 .board text { font-family: var(--hand); text-anchor: middle; pointer-events: none; }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.chips button { width: 42px; height: 42px; border: 2px solid var(--ink); border-radius: 6px 12px 5px 11px / 11px 5px 12px 6px; font-size: 20px; }
+.chips { display: flex; flex-wrap: nowrap; gap: 6px; margin-top: 8px; height: 40px; }
+.chips button { flex: 1 1 0; min-width: 0; max-width: 46px; height: 40px; border: 2px solid var(--ink); border-radius: 6px 12px 5px 11px / 11px 5px 12px 6px; font-size: 20px; }
 .chips button:active { transform: translateY(1px); }
-.chips .wide { width: auto; padding: 0 12px; background: var(--paper); font-size: 16px; }
+.chips .wide { flex: none; max-width: none; padding: 0 10px; background: var(--paper); font-size: 16px; }
 
 .side { display: flex; flex-direction: column; gap: 16px; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; }
@@ -69,7 +82,7 @@ nav button:hover, .toggles button:hover { color: var(--ink); }
 .tag { display: inline-block; width: 26px; height: 26px; line-height: 23px; text-align: center; border: 1.5px solid var(--ink); border-radius: 5px 9px 4px 8px / 8px 4px 9px 5px; margin-right: 6px; font-family: var(--hand); }
 
 .reveal { padding: 14px 18px; border: 2px solid var(--ink); border-radius: 4px 18px 6px 16px / 16px 6px 18px 4px; background: var(--paper); box-shadow: 5px 5px 0 #a5d8ff; animation: pop .35s ease-out; }
-@keyframes pop { from { transform: scale(.94) rotate(-1deg); opacity: 0; } }
+@keyframes pop { from { transform: scale(.96) rotate(-1deg); } }
 .reveal .name { font-family: var(--mono); font-size: 34px; line-height: 1.2; }
 .reveal .new { color: var(--pink); font-size: 15px; margin-left: 8px; font-family: var(--hand); }
 .reveal p { margin: 6px 0; }

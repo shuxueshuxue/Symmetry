@@ -36,7 +36,7 @@ const en = {
   arrange: 'Swap elements so that a normal subgroup comes first: the table falls into blocks, and the blocks are the quotient group.',
   chain: 'Leading normal subgroups', chainNone: 'none in this arrangement', quotient: 'quotient',
   notFound: 'not found yet', collectionIntro: 'Every group with at most 12 elements. Solve a puzzle or build a table to find one.',
-  sound: 'sound', music: 'music', on: 'on', off: 'off', hintsUsed: 'hints',
+  sound: 'sound', on: 'on', off: 'off', hintsUsed: 'hints',
 }
 
 const zh: typeof en = {
@@ -75,7 +75,7 @@ const zh: typeof en = {
   arrange: '对调元素，把一个正规子群排到最前面：表会分成一块一块，这些块就是商群。',
   chain: '排在最前面的正规子群', chainNone: '这种排法下没有', quotient: '商群',
   notFound: '还没发现', collectionIntro: '不超过 12 个元素的全部群。解一道谜题或者造一张表来发现它们。',
-  sound: '音效', music: '音乐', on: '开', off: '关', hintsUsed: '提示',
+  sound: '音效', on: '开', off: '关', hintsUsed: '提示',
 }
 
 const DICT = { en, zh }
