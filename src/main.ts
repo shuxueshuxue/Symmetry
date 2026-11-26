@@ -332,7 +332,8 @@ function explain(): string {
   // on a small screen the switches live here too: the bar has no room for them
   const switches = compact() && !game ? `<div class="toggles"><button data-toggle="sound">${t('sound')} <b>${t(save.sound ? 'on' : 'off')}</b></button><button data-toggle="lang">${getLang() === 'en' ? '中文' : 'EN'}</button></div>` : ''
   return `<div class="explain"><p class="lede">${t(!game && tab === 'build' ? 'buildIntro' : 'tagline')}</p>
-    <ol><li>${t('rule1')}</li><li>${t('rule2')}</li></ol><p>${t('rulesMore')}</p>${levels}${game ? `<p>${t('pickCell')}</p>` : ''}${switches}</div>`
+    <ol><li>${t('rule1')}</li><li>${t('rule2')}</li></ol><p>${t('rulesMore')}</p>${levels}${game ? `<p>${t('pickCell')}</p>` : ''}
+    <div class="foot">${switches}<a href="https://github.com/shuxueshuxue/Symmetry" target="_blank" rel="noopener">GitHub ↗</a></div></div>`
 }
 
 /** what the game has to say right now: the result, a message, or the facts about an element */
