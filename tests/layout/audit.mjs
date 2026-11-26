@@ -32,12 +32,16 @@ function probe() {
     if ((dy > 1 && cs.overflowY !== 'visible') || (dx > 1 && cs.overflowX !== 'visible')) found.push({ what: cs.overflowY === 'hidden' || cs.overflowX === 'hidden' ? 'content is cut off' : 'content scrolls inside', where: name(el), by: `${Math.max(dx, 0)}x${Math.max(dy, 0)}` })
     if (r.right > vw + 1 || r.bottom > vh + 1 || r.left < -1 || r.top < -1) found.push({ what: 'reaches outside the window', where: name(el), by: `${Math.round(Math.max(r.right - vw, -r.left, 0))}x${Math.round(Math.max(r.bottom - vh, -r.top, 0))}` })
   }
-  // a drawing must hold everything in it: a star cluster's halo covers its orbit, and must lie inside the chart
+  // A drawing must hold everything that moves in it. A cluster's stars turn about its centre, so the whole circle they sweep,
+  // star and glow included, has to lie inside the chart; measured from the stars themselves, not from any outline drawn for it.
   for (const svg of document.querySelectorAll('#app svg.chart')) {
-    const box = svg.getBoundingClientRect()
-    for (const halo of svg.querySelectorAll('.halo')) {
-      const r = halo.getBoundingClientRect()
-      if (r.left < box.left - 1 || r.top < box.top - 1 || r.right > box.right + 1 || r.bottom > box.bottom + 1) { found.push({ what: 'cut off by the edge of its own drawing', where: 'svg.chart .node', by: '' }); break }
+    const box = svg.getBoundingClientRect(), view = svg.viewBox.baseVal, scale = box.width / view.width, GLOW = 8
+    for (const node of svg.querySelectorAll('.node')) {
+      const halo = node.querySelector('.halo'), cx = +halo.getAttribute('cx'), cy = +halo.getAttribute('cy')
+      let reach = 0
+      for (const star of node.querySelectorAll('.star')) reach = Math.max(reach, Math.hypot(+star.getAttribute('cx') - cx, +star.getAttribute('cy') - cy) + +star.getAttribute('r') + GLOW)
+      const x = box.left + (cx - view.x) * scale, y = box.top + (cy - view.y) * scale, r = reach * scale
+      if (x - r < box.left - 0.5 || y - r < box.top - 0.5 || x + r > box.right + 0.5 || y + r > box.bottom + 0.5) { found.push({ what: 'cut off by the edge of its own drawing', where: 'svg.chart .node', by: '' }); break }
     }
   }
   // every control must be reachable: whatever is on top at its centre has to be the control itself
