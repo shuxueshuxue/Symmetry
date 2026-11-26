@@ -51,8 +51,10 @@ export const randomSeed = () => (Date.now() ^ (Math.random() * 2 ** 31)) >>> 0
 
 // ------------------------------------------------------------------ starting
 
-export function newPuzzle(n: number, difficulty: Difficulty, seed: number = randomSeed()): Session {
+/** undefined when no group of this order has a puzzle of this difficulty */
+export function newPuzzle(n: number, difficulty: Difficulty, seed: number = randomSeed()): Session | undefined {
   const p = generate(n, difficulty, mulberry32(seed))
+  if (!p) return undefined
   const cells = new Int8Array(n * n).fill(-1), given = new Uint8Array(n * n)
   for (const [r, c, v] of p.givens) { cells[r * n + c] = v; given[r * n + c] = 1 }
   return { mode: 'puzzle', n, difficulty, code: puzzleCode(n, difficulty, seed), cells, given, solution: p.solution, perm: [...Array(n).keys()], history: [], hints: 0, solved: undefined }
@@ -148,7 +150,7 @@ export function toJSON(s: Session): unknown {
 
 export function fromJSON(j: any): Session {
   const named = j.code ? parseCode(j.code) : undefined
-  const original = named ? generate(named.n, named.difficulty, mulberry32(named.seed)).solution : undefined
+  const original = named ? generate(named.n, named.difficulty, mulberry32(named.seed))?.solution : undefined
   const snap = (h: any): Snapshot => ({ cells: Int8Array.from(h.cells), given: Uint8Array.from(h.given), perm: h.perm, solution: original && relabel(original, j.n, h.perm) })
   return { mode: j.mode, n: j.n, difficulty: j.difficulty, code: j.code, ...snap(j), hints: j.hints ?? 0,
     solved: j.solved ? groupsOfOrder(j.n).find((g) => g.id === j.solved) : undefined, history: (j.history ?? []).map(snap) }

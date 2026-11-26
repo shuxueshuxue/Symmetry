@@ -1,7 +1,7 @@
 import './style.css'
 import { GROUPS, LABELS, ORDERS, groupsOfOrder, type GroupInfo } from './core/groups.ts'
 import { conflicts } from './core/solve.ts'
-import { DIFFICULTIES, type Difficulty } from './core/generate.ts'
+import { DIFFICULTIES, offered, type Difficulty } from './core/generate.ts'
 import { advise, newBuild, newPuzzle, parseCode, place, restart as restartSession, swapElements, undo as undoMove, type Report, type Session } from './game/session.ts'
 import { recordArrangement, recordSolve } from './game/progress.ts'
 import { conflictText, hintText } from './game/words.ts'
@@ -56,7 +56,10 @@ function open(session: Session) {
   render()
 }
 
-const start = (mode: Session['mode'], n: number) => open(mode === 'puzzle' ? newPuzzle(n, save.difficulty) : newBuild(n))
+function start(mode: Session['mode'], n: number) {
+  const session = mode === 'puzzle' ? newPuzzle(n, save.difficulty) : newBuild(n)
+  if (session) open(session)
+}
 
 /** show what a move did: what is broken, or that the table is finished */
 function show(g: Game, r: Report) {
@@ -206,7 +209,9 @@ function chart(puzzles: boolean, roomW: number, roomH: number): string {
       star++
     })
     const count = save.solved[`${n}:${save.difficulty}`] ?? 0
-    nodes += `<g class="node" data-start="${n}" role="button" tabindex="0" aria-label="${orderOf(n)}" style="transform-origin:${x}px ${y}px">
+    // an order that has no puzzle of this difficulty is on the chart but cannot be opened
+    const open = !puzzles || offered(n, save.difficulty)
+    nodes += `<g class="node${open ? '' : ' off'}" ${open ? `data-start="${n}" role="button" tabindex="0"` : ''} aria-label="${orderOf(n)}" style="transform-origin:${x}px ${y}px">
       <circle class="halo" cx="${x}" cy="${y}" r="${ORBIT + 4}"/>
       <circle cx="${x}" cy="${y}" r="${R}" fill="${NIGHT}"/>${new Pen(n * 13).circle(x, y, R, INK, 1.8)}
       <text class="num" x="${x}" y="${y + 11}">${n}</text>
@@ -410,7 +415,10 @@ startSky(document.getElementById('sky') as HTMLCanvasElement)
 function follow() {
   const named = parseCode(location.hash.slice(1))
   if (!named) return false
-  if (game?.code !== location.hash.slice(1)) { save.difficulty = named.difficulty; open(newPuzzle(named.n, named.difficulty, named.seed)) }
+  if (game?.code === location.hash.slice(1)) return true
+  const session = newPuzzle(named.n, named.difficulty, named.seed)
+  if (!session) return false
+  save.difficulty = named.difficulty; open(session)
   return true
 }
 window.addEventListener('hashchange', follow)

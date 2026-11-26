@@ -97,6 +97,8 @@ export function identify(t: ArrayLike<number>, n: number): GroupInfo | undefined
 
 class Contradiction extends Error {}
 const BAD = new Contradiction()
+/** orders at which every group is commutative: primes and squares of primes */
+const PRIME_OR_SQUARE = new Set([2, 3, 4, 5, 7, 9, 11, 13, 17, 19, 23, 25, 29, 31])
 
 /** Layers of reasoning. 1: rows and columns. 2: plus associativity. 3: plus "suppose..., contradiction". */
 export type Level = 1 | 2 | 3
@@ -108,6 +110,8 @@ export class Grid {
   filled = 0
   /** how many candidates had to be ruled out by supposing them */
   supposes = 0
+  /** also use what any student of groups knows without working it out cell by cell (see theory()) */
+  theorems = false
 
   constructor(n: number, clues: readonly Clue[] = []) {
     this.n = n
@@ -118,7 +122,7 @@ export class Grid {
 
   copy(): Grid {
     const g: Grid = Object.create(Grid.prototype)
-    g.n = this.n; g.val = this.val.slice(); g.cand = this.cand.slice(); g.filled = this.filled; g.supposes = 0
+    g.n = this.n; g.val = this.val.slice(); g.cand = this.cand.slice(); g.filled = this.filled; g.supposes = 0; g.theorems = this.theorems
     return g
   }
 
@@ -184,6 +188,47 @@ export class Grid {
     return changed
   }
 
+  /**
+   * Shortcuts. Each of these follows from the two rules, but a player who knows it does not have to derive it,
+   * so a puzzle that falls to them is easier than cell-by-cell reasoning says. They are all true of every group.
+   *   - an element that fixes anything is the identity, and the identity fixes everything; nothing else fixes anything
+   *   - if x·y is the identity then so is y·x
+   *   - the order of an element divides the order of the group (Lagrange)
+   *   - a group of prime order, or of order p², or with an element of full order, is commutative
+   */
+  private theory(): boolean {
+    const n = this.n, val = this.val, cand = this.cand
+    let changed = false
+    const limit = (at: number, mask: number) => { const m = cand[at] & mask; if (!m) throw BAD; if (m !== cand[at]) { cand[at] = m; changed = true } }
+    let e = -1
+    for (let a = 0; a < n && e < 0; a++) for (let b = 0; b < n; b++) if (val[a * n + b] === b || val[b * n + a] === b) { e = a; break }
+    let commutative = PRIME_OR_SQUARE.has(n)
+    if (e >= 0) {
+      for (let x = 0; x < n; x++) { if (this.put(e, x, x)) changed = true; if (this.put(x, e, x)) changed = true }
+      for (let a = 0; a < n; a++) {
+        if (a === e) continue
+        for (let b = 0; b < n; b++) { if (val[a * n + b] < 0) limit(a * n + b, ~(1 << b)); if (val[b * n + a] < 0) limit(b * n + a, ~(1 << b)) }
+      }
+      for (let x = 0; x < n; x++) for (let y = 0; y < n; y++) if (val[x * n + y] === e && this.put(y, x, e)) changed = true
+      // powers of x: x^k can only be the identity when k divides n
+      for (let x = 0; x < n; x++) {
+        if (x === e) continue
+        for (let k = 1, p = x; k < n; k++) {
+          const next = p * n + x
+          if (n % (k + 1) !== 0 && val[next] < 0) limit(next, ~(1 << e))
+          p = val[next]
+          if (p < 0 || p === e) break
+          if (2 * (k + 1) >= n) commutative = true // the order of x exceeds n/2 and divides n, so x generates the whole group
+        }
+      }
+    }
+    if (commutative) for (let a = 0; a < n; a++) for (let b = 0; b < a; b++) {
+      const p = a * n + b, q = b * n + a
+      if (val[p] >= 0) { if (this.put(b, a, val[p])) changed = true } else if (val[q] >= 0) { if (this.put(a, b, val[q])) changed = true } else { const m = cand[p] & cand[q]; limit(p, m); limit(q, m) }
+    }
+    return changed
+  }
+
   private suppose(maxSupposes: number): boolean {
     const n = this.n
     let changed = false
@@ -211,6 +256,7 @@ export class Grid {
       let changed = this.latin()
       if (level >= 2 && this.assoc()) changed = true
       if (changed) continue
+      if (level >= 2 && this.theorems && this.theory()) continue
       if (level >= 3 && this.filled < this.n * this.n && this.supposes <= maxSupposes && this.suppose(maxSupposes)) continue
       return
     }
@@ -220,16 +266,17 @@ export class Grid {
 }
 
 /** does reasoning at this level finish the table? */
-export function solvesAt(n: number, clues: readonly Clue[], level: Level, maxSupposes = Infinity): { solved: boolean; supposes: number } {
+export function solvesAt(n: number, clues: readonly Clue[], level: Level, maxSupposes = Infinity, theorems = false): { solved: boolean; supposes: number } {
   const g = new Grid(n, clues)
+  g.theorems = theorems
   try { g.run(level, maxSupposes) } catch (e) { if (e !== BAD) throw e; return { solved: false, supposes: g.supposes } }
   return { solved: g.solved, supposes: g.supposes }
 }
 
 /** the lowest level that finishes the table (4 = none of them) */
-export function rate(n: number, clues: readonly Clue[]): { level: number; supposes: number } {
+export function rate(n: number, clues: readonly Clue[], theorems = false): { level: number; supposes: number } {
   for (const level of [1, 2, 3] as const) {
-    const r = solvesAt(n, clues, level)
+    const r = solvesAt(n, clues, level, Infinity, theorems)
     if (r.solved) return { level, supposes: r.supposes }
   }
   return { level: 4, supposes: 0 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { GROUPS, ORDERS, groupsOfOrder, isGroupTable, relabel } from '../src/core/groups.ts'
 import { cluesOf, conflicts, hint, identify, isUnique, rate, solvesAt, tables, type Clue } from '../src/core/solve.ts'
-import { DIFFICULTIES, generate, mulberry32, normalBudget, shuffle } from '../src/core/generate.ts'
+import { DIFFICULTIES, generate, generateFor, meets, mulberry32, normalBudget, offered, shuffle } from '../src/core/generate.ts'
 
 const COUNT: Record<number, number> = { 2: 1, 3: 1, 4: 2, 5: 1, 6: 2, 7: 1, 8: 5, 9: 2, 10: 2, 11: 1, 12: 5 }
 
@@ -50,24 +50,37 @@ describe('uniqueness', () => {
 describe('generated puzzles', () => {
   const rng = mulberry32(3)
   for (const n of [4, 6, 8]) for (const d of DIFFICULTIES) {
-    it(`order ${n} ${d}: one solution, the stated difficulty, and no given to spare`, () => {
-      const p = generate(n, d, rng)
+    it(`order ${n} ${d}: one solution, the promised difficulty, and no given to spare`, () => {
+      const p = generate(n, d, rng)!
       expect(isGroupTable(p.solution, n)).toBe(true)
       expect(p.givens.every(([r, c, v]) => p.solution[r * n + c] === v)).toBe(true)
       const only = tables(n, p.givens, 2)
       expect(only.length).toBe(1)
       expect([...only[0].table]).toEqual([...p.solution])
-      const ok = (c: Clue[]) => d === 'easy' ? solvesAt(n, c, 2).solved : d === 'normal' ? solvesAt(n, c, 3, normalBudget(n)).solved : isUnique(n, c)
-      expect(ok(p.givens)).toBe(true)
-      for (let k = 0; k < p.givens.length; k++) expect(ok(p.givens.filter((_, i) => i !== k))).toBe(false)
+      expect(meets(n, d, p.givens)).toBe(true)
+      // one given fewer and the puzzle is no longer what it says it is
+      const still = (c: Clue[]) => d === 'easy' ? solvesAt(n, c, 2).solved : d === 'normal' ? solvesAt(n, c, 3, normalBudget(n), true).solved : isUnique(n, c)
+      for (let k = 0; k < p.givens.length; k++) expect(still(p.givens.filter((_, i) => i !== k))).toBe(false)
     })
   }
+  it('a normal or expert puzzle never falls to the shortcuts alone', () => {
+    for (const n of [5, 7, 8, 9]) for (const d of ['normal', 'expert'] as const) for (let k = 0; k < 4; k++) {
+      const p = generate(n, d, rng)!
+      expect(solvesAt(n, p.givens, 2, Infinity, true).solved).toBe(false)
+      const few = solvesAt(n, p.givens, 3, normalBudget(n), true).solved
+      expect(few).toBe(d === 'normal')
+    }
+  })
+  it('leaves no group out: from order 5 up every group gives every difficulty, and what is offered can be made', () => {
+    for (const g of GROUPS) if (g.order >= 5) for (const d of DIFFICULTIES) expect(generateFor(g, d, rng), `${g.id} ${d}`).toBeDefined()
+    for (const n of ORDERS) for (const d of DIFFICULTIES) expect(generate(n, d, rng) !== undefined, `order ${n} ${d}`).toBe(offered(n, d))
+  })
 })
 
 describe('hints and conflicts', () => {
   it('every hint is a correct cell, and following hints finishes an easy puzzle without supposing', () => {
     const rng = mulberry32(4)
-    const p = generate(8, 'easy', rng)
+    const p = generate(8, 'easy', rng)!
     const cells = new Int8Array(64).fill(-1)
     for (const [r, c, v] of p.givens) cells[r * 8 + c] = v
     for (let step = 0; step < 64 && cells.includes(-1); step++) {
@@ -112,7 +125,7 @@ import { advise, fromJSON, newPuzzle, parseCode, place, puzzleCode, swapElements
 
 describe('sessions', () => {
   it('a code names one puzzle', () => {
-    const a = newPuzzle(8, 'normal', 12345), b = newPuzzle(8, 'normal', 12345)
+    const a = newPuzzle(8, 'normal', 12345)!, b = newPuzzle(8, 'normal', 12345)!
     expect(a.code).toBe(puzzleCode(8, 'normal', 12345))
     expect([...a.cells]).toEqual([...b.cells])
     expect(parseCode(a.code!)).toEqual({ n: 8, difficulty: 'normal', seed: 12345 })
@@ -121,7 +134,7 @@ describe('sessions', () => {
     expect(parseCode(puzzleCode(8, 'easy', 5))?.difficulty).toBe('easy')
   })
   it('hints lead to the end, and the win is reported once', () => {
-    const s = newPuzzle(6, 'easy', 7)
+    const s = newPuzzle(6, 'easy', 7)!
     let won
     for (let i = 0; i < 40 && !s.solved; i++) {
       const a = advise(s)!
@@ -133,7 +146,7 @@ describe('sessions', () => {
     expect(place(s, 0, 0)).toBeUndefined() // a finished table does not change
   })
   it('refuses to overwrite a given, reports a conflict, and undoes', () => {
-    const s = newPuzzle(6, 'easy', 7), given = s.given.indexOf(1), free = s.cells.indexOf(-1)
+    const s = newPuzzle(6, 'easy', 7)!, given = s.given.indexOf(1), free = s.cells.indexOf(-1)
     expect(place(s, given, 0)).toBeUndefined()
     const row = Math.floor(free / 6), taken = [...s.cells.slice(row * 6, row * 6 + 6)].find((v) => v >= 0)
     if (taken !== undefined) expect(place(s, free, taken)!.conflicts.length).toBeGreaterThan(0)
@@ -141,7 +154,7 @@ describe('sessions', () => {
     expect(s.cells[free]).toBe(-1)
   })
   it('a saved session holds no solution and comes back the same, even after renumbering', () => {
-    const s = newPuzzle(8, 'easy', 99)
+    const s = newPuzzle(8, 'easy', 99)!
     const a = advise(s)!
     if (a.kind === 'step') place(s, a.hint.r * 8 + a.hint.c, a.hint.v)
     swapElements(s, 1, 5)
@@ -151,5 +164,27 @@ describe('sessions', () => {
     expect([...back.cells]).toEqual([...s.cells])
     expect([...back.solution!]).toEqual([...s.solution!])
     expect(back.history.length).toBe(s.history.length)
+  })
+})
+
+import { Grid } from '../src/core/solve.ts'
+
+describe('theorem shortcuts', () => {
+  it('never contradict a real group: on every group, from sparse givens, they only ever write correct cells', () => {
+    const rng = mulberry32(8)
+    for (const g of GROUPS) for (let rep = 0; rep < 6; rep++) {
+      const n = g.order, p = generateFor(g, rep % 2 ? 'expert' : 'easy', rng)
+      if (!p) continue
+      const grid = new Grid(n, p.givens)
+      grid.theorems = true
+      grid.run(3) // would throw on a contradiction
+      for (let i = 0; i < n * n; i++) if (grid.val[i] >= 0) expect(grid.val[i]).toBe(p.solution[i])
+    }
+  })
+  it('finish a prime-order table that cell-by-cell reasoning cannot', () => {
+    // 1·1 = 2 and 2·3 = 0 fix the 5-element table; without theorems that takes supposing
+    const givens: Clue[] = [[1, 1, 2], [2, 3, 0]]
+    expect(solvesAt(5, givens, 2).solved).toBe(false)
+    expect(rate(5, givens, true).supposes).toBeLessThan(rate(5, givens).supposes)
   })
 })
