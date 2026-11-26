@@ -9,7 +9,7 @@
 <p align="center"><img src="docs/two-cells.svg" width="100%" alt="a five by five table with only two cells given; an arrow; the same table completely filled in"></p>
 
 **A few cells fix the whole table.** Every puzzle has exactly one solution, and you are not told
-which group it is. Solve it and the game names it: there are 23 to collect.
+which group it is. Solve it and the game names it: there are 53 to collect, every group with at most 20 elements.
 
 <p align="center"><img src="docs/one-rule.svg" width="100%" alt="three boxes a, b, c; bracketing the first two or the last two leads to the same cell"></p>
 

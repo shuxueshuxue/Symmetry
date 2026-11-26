@@ -1,10 +1,11 @@
 import './style.css'
 import { GROUPS, LABELS, ORDERS, groupsOfOrder, type GroupInfo } from './core/groups.ts'
 import { conflicts } from './core/solve.ts'
-import { DIFFICULTIES, offered, type Difficulty } from './core/generate.ts'
-import { advise, newBuild, newPuzzle, parseCode, place, restart as restartSession, swapElements, undo as undoMove, type Report, type Session } from './game/session.ts'
+import { DIFFICULTIES, offered, type Difficulty, type Puzzle } from './core/generate.ts'
+import { advise, newBuild, newPuzzle, parseCode, place, randomSeed, restart as restartSession, sessionFrom, swapElements, undo as undoMove, type Report, type Session } from './game/session.ts'
+import Brewer from './brew.ts?worker&inline'
 import { recordArrangement, recordSolve } from './game/progress.ts'
-import { conflictText, hintText } from './game/words.ts'
+import { conflictText, hintText, mistakeText } from './game/words.ts'
 import { elementFacts, leadingNormalSubgroups, orderCounts } from './core/structure.ts'
 import { about, getLang, orderOf, setLang, t, type Key } from './i18n.ts'
 import { load, store } from './store.ts'
@@ -38,6 +39,8 @@ let game: Game | undefined
 let fresh = true
 /** which group the collection is showing */
 let picked: string | undefined
+/** the page explains itself only when asked: everything in words is behind the i button */
+let help = false
 
 /** A small window has no room for a side column: what the game has to say goes in a note that unfolds. */
 const compact = () => window.innerWidth < 760 || window.innerHeight < 520
@@ -56,9 +59,33 @@ function open(session: Session) {
   render()
 }
 
+// Puzzles are made on another thread; the page shows that it is waiting and goes on moving.
+let brewer: Worker | undefined, ticket = 0
+let waiting: number | undefined // the ticket being waited for
+
+function conjure(n: number, difficulty: Difficulty, seed: number) {
+  if (!offered(n, difficulty)) return false
+  waiting = ++ticket
+  render()
+  try {
+    brewer ??= new Brewer()
+    brewer.onmessage = (ev: MessageEvent<{ ticket: number; seed: number; puzzle: Puzzle | undefined }>) => {
+      if (ev.data.ticket !== waiting) return // the player has gone elsewhere
+      waiting = undefined
+      if (ev.data.puzzle) open(sessionFrom(ev.data.puzzle, ev.data.seed)); else render()
+    }
+    brewer.postMessage({ ticket, n, difficulty, seed })
+  } catch {
+    // no workers here: make it on this thread
+    waiting = undefined
+    const session = newPuzzle(n, difficulty, seed)
+    if (session) open(session); else render()
+  }
+  return true
+}
+
 function start(mode: Session['mode'], n: number) {
-  const session = mode === 'puzzle' ? newPuzzle(n, save.difficulty) : newBuild(n)
-  if (session) open(session)
+  if (mode === 'puzzle') conjure(n, save.difficulty, randomSeed()); else open(newBuild(n))
 }
 
 /** show what a move did: what is broken, or that the table is finished */
@@ -118,7 +145,7 @@ function askHint() {
   if (!a) return
   if (a.kind === 'mistake') {
     g.marks = [a.at]; g.target = -1; g.sel = a.at
-    g.say = { text: t('hintMistake', { r: Math.floor(a.at / n) + 1, c: (a.at % n) + 1 }), tone: 'bad' }
+    g.say = { text: mistakeText(n, a.at), tone: 'bad' }
   } else {
     const h = a.hint
     g.target = h.r * n + h.c; g.sel = g.target; g.head = -1
@@ -181,19 +208,21 @@ function mini(g: GroupInfo): string {
 /** The home screen is a star chart: one cluster per order, one star per group of that order. Stars light up when found.
  *  It is laid out for the space it is given: one long zigzag when wide, several rows when not. */
 function chart(puzzles: boolean, roomW: number, roomH: number): string {
-  const R = 27, ORBIT = 46, CELL_W = 104, CELL_H = 150
-  // the number of rows that lets the chart be drawn largest in this room
-  let rows = 1, best = 0
-  for (const k of [1, 2, 3, 4, 6]) {
-    const cols = Math.ceil(ORDERS.length / k), scale = Math.min(roomW / (cols * CELL_W), roomH / (k * CELL_H))
-    if (scale > best) { best = scale; rows = k }
+  // REACH is how far a cluster extends from its centre: the orbit, a star on it, and the star's glow
+  const R = 27, ORBIT = 46, REACH = ORBIT + 20, CELL_W = 104, CELL_H = 150
+  const arrange = (rows: number) => {
+    const cols = Math.ceil(ORDERS.length / rows)
+    const pos = ORDERS.map((_, i) => {
+      const row = Math.floor(i / cols), k = i % cols, back = row % 2 === 1 // alternate rows run right to left, so the path never crosses itself
+      return [((back ? cols - 1 - k : k) + 0.5) * CELL_W, (row + 0.5) * CELL_H + (k % 2 ? 1 : -1) * (rows === 1 ? 62 + 30 * Math.sin(i * 1.9 + 0.6) : 16)]
+    })
+    // the drawing is as large as everything in it, so that nothing that orbits is ever cut off at its edge
+    const xs = pos.map((p) => p[0]), ys = pos.map((p) => p[1])
+    const x0 = Math.min(...xs) - REACH, y0 = Math.min(...ys) - REACH, w = Math.max(...xs) + REACH - x0, h = Math.max(...ys) + REACH - y0
+    return { pos, x0, y0, w, h, scale: Math.min(roomW / w, roomH / h) }
   }
-  const cols = Math.ceil(ORDERS.length / rows), W = cols * CELL_W, H = rows * CELL_H
-  const pos = ORDERS.map((_, i) => {
-    const row = Math.floor(i / cols), k = i % cols, back = row % 2 === 1 // alternate rows run right to left, so the path never crosses itself
-    const x = ((back ? cols - 1 - k : k) + 0.5) * CELL_W
-    return [x, (row + 0.5) * CELL_H - 8 + (k % 2 ? 1 : -1) * (rows === 1 ? 62 + 30 * Math.sin(i * 1.9 + 0.6) : 16)]
-  })
+  // the number of rows that lets the chart be drawn largest in this room
+  const { pos, x0, y0, w: W, h: H, scale: best } = [1, 2, 3, 4, 5, 7].map(arrange).reduce((a, b) => (b.scale > a.scale ? b : a))
   const pen = new Pen(42)
   let paths = '', nodes = ''
   for (let i = 1; i < pos.length; i++) paths += pen.line(pos[i - 1][0], pos[i - 1][1], pos[i][0], pos[i][1], SOFT, 1.1, 1.6, 1)
@@ -212,13 +241,13 @@ function chart(puzzles: boolean, roomW: number, roomH: number): string {
     // an order that has no puzzle of this difficulty is on the chart but cannot be opened
     const open = !puzzles || offered(n, save.difficulty)
     nodes += `<g class="node${open ? '' : ' off'}" ${open ? `data-start="${n}" role="button" tabindex="0"` : ''} aria-label="${orderOf(n)}" style="transform-origin:${x}px ${y}px">
-      <circle class="halo" cx="${x}" cy="${y}" r="${ORBIT + 4}"/>
+      <circle class="halo" cx="${x}" cy="${y}" r="${ORBIT + 8}"/>
       <circle cx="${x}" cy="${y}" r="${R}" fill="${NIGHT}"/>${new Pen(n * 13).circle(x, y, R, INK, 1.8)}
       <text class="num" x="${x}" y="${y + 11}">${n}</text>
-      <g class="orbit" style="transform-origin:${x}px ${y}px;animation-duration:${50 + i * 7}s;animation-direction:${i % 2 ? 'reverse' : 'normal'}">${stars}</g>
+      <g class="orbit" style="transform-origin:${x}px ${y}px;animation-duration:${50 + i * 7}s;animation-direction:${i % 2 ? 'reverse' : 'normal'}"><g class="spin" style="transform-origin:${x}px ${y}px">${stars}</g></g>
       ${puzzles && count ? `<text class="times" x="${x + R + 2}" y="${y - R + 4}">×${count}</text>` : ''}</g>`
   })
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" width="${Math.floor(W * best)}" height="${Math.floor(H * best)}">${paths}${nodes}</svg>`
+  return `<svg class="chart" viewBox="${x0} ${y0} ${W} ${H}" width="${Math.floor(W * best)}" height="${Math.floor(H * best)}">${paths}${nodes}</svg>`
 }
 
 // ---------------------------------------------------------------------------------------- screens
@@ -227,6 +256,7 @@ function top(): string {
   const nav = (id: Tab, key: Key) => `<button data-tab="${id}" class="${!game && tab === id ? 'on' : ''}">${t(key)}</button>`
   const flag = (on: boolean) => `<b>${t(on ? 'on' : 'off')}</b>`
   const toggles = `<div class="toggles"><button data-toggle="sound">${t('sound')} ${flag(save.sound)}</button><button data-toggle="lang">${getLang() === 'en' ? '中文' : 'EN'}</button></div>`
+  const asker = `<button class="info${help ? ' open' : ''}" data-help aria-label="${t('info')}">i</button>`
   if (game) {
     // while a table is open the bar is just: back, what this is, and the switches. The group has no name until it is solved.
     const g = game, what = g.done ? g.done.group.name : '???', small = compact()
@@ -236,11 +266,11 @@ function top(): string {
     return `<header class="top"><button data-back class="back" aria-label="${t('back')}">←</button><h2>${title}</h2>
       <span class="meta">${g.mode === 'puzzle' ? t(g.difficulty) : ''}${g.hints && !small ? ` · ${t('hintsUsed')} ${g.hints}` : ''}</span>
       ${small ? `<button class="info${dot}${g.info ? ' open' : ''}" data-info aria-label="${t('info')}">i</button>`
-        : `${g.code ? `<button class="code" data-copy title="${t('copyLink')}">#${g.code}</button>` : ''}${toggles}`}</header>`
+        : `${g.code ? `<button class="code" data-copy title="${t('copyLink')}">#${g.code}</button>` : ''}${toggles}${asker}`}</header>`
   }
   return `<header class="top"><button class="word" data-tab="puzzles">symmetry</button>
     <nav>${nav('puzzles', 'puzzles')}${nav('build', 'build')}${nav('collection', 'collection')}</nav>
-    ${toggles}</header>`
+    ${toggles}${asker}</header>`
 }
 
 /** every group as a small seal on a wall; one of them is shown in full */
@@ -252,20 +282,21 @@ function shelf(): string {
   const card = shown
     ? `<div class="entry">${mini(shown)}<div><div class="name">${shown.name}<small>${orderOf(shown.order)}</small></div><p>${esc(about(shown.id, shown.order))}</p></div></div>`
     : `<div class="entry missing"><p>${t(save.found.length ? 'pickOne' : 'collectionIntro')}</p></div>`
-  return `<div class="shelf${fresh ? ' arrive' : ''}"><p class="count">${save.found.length} / ${GROUPS.length}</p><div class="wall">${wall}</div>${card}</div>`
+  // the largest tile at which the whole wall fits in what the count and the card leave
+  const w = Math.min(window.innerWidth, 1080) - (compact() ? 24 : 48), h = window.innerHeight - (compact() ? 250 : 290), gap = 8
+  let tile = 64
+  while (tile > 14 && Math.ceil(GROUPS.length / Math.floor((w + gap) / (tile + gap))) * (tile + gap) > h) tile -= 2
+  return `<div class="shelf${fresh ? ' arrive' : ''}"><p class="count">${save.found.length} / ${GROUPS.length}</p><div class="wall" style="--tile:${tile}px">${wall}</div>${card}</div>`
 }
 
 function home(): string {
   if (tab === 'collection') return shelf()
   const puzzles = tab === 'puzzles', small = compact()
   const levels = DIFFICULTIES.map((d) => `<button data-level="${d}" class="${save.difficulty === d ? 'on' : ''}">${t(d)}</button>`).join('')
-  // the chart gets whatever the words leave; the words are measured in lines, generously
+  // nothing but the chart, and the choice of difficulty; the chart gets all the room there is
   const w = window.innerWidth, h = window.innerHeight, pad = small ? 28 : 48
-  const words = (small ? 150 : 124) + (w < 420 ? 44 : 0) + (puzzles ? (small ? 78 : 44) : 0)
-  return `<div class="home${fresh ? ' arrive' : ''}"><div class="intro"><p class="lede">${t(puzzles ? 'tagline' : 'buildIntro')}</p>
-    ${puzzles ? `<div class="levels">${levels}</div><p class="note">${t((save.difficulty + 'Note') as Key)}</p>` : ''}</div>
-    <div class="sky">${chart(puzzles, Math.min(w, 1080) - pad, Math.max(h - words - 60, 120))}</div>
-    <div class="rules"><span>1 · ${t('rule1')}</span><span>2 · ${t('rule2')}</span></div></div>`
+  return `<div class="home${fresh ? ' arrive' : ''}">${puzzles ? `<div class="intro"><div class="levels">${levels}</div></div>` : ''}
+    <div class="sky">${chart(puzzles, Math.min(w, 1080) - pad, Math.max(h - (small ? 70 : 84) - (puzzles ? 56 : 0), 120))}</div></div>`
 }
 
 function facts(g: Game): string {
@@ -295,6 +326,15 @@ function reveal(g: Game, small: boolean): string {
     ${n > 3 ? `${small ? '' : `<p class="small">${t('arrange')}</p>`}<p class="chain">${t('chain')}:<br>${steps}</p>${extra}` : ''}</div>`
 }
 
+/** everything the page would otherwise have to say in words, kept out of sight until asked for */
+function explain(): string {
+  const levels = !game && tab === 'puzzles' ? `<dl>${DIFFICULTIES.map((d) => `<dt>${t(d)}</dt><dd>${t((d + 'Note') as Key)}</dd>`).join('')}</dl>` : ''
+  // on a small screen the switches live here too: the bar has no room for them
+  const switches = compact() && !game ? `<div class="toggles"><button data-toggle="sound">${t('sound')} <b>${t(save.sound ? 'on' : 'off')}</b></button><button data-toggle="lang">${getLang() === 'en' ? '中文' : 'EN'}</button></div>` : ''
+  return `<div class="explain"><p class="lede">${t(!game && tab === 'build' ? 'buildIntro' : 'tagline')}</p>
+    <ol><li>${t('rule1')}</li><li>${t('rule2')}</li></ol><p>${t('rulesMore')}</p>${levels}${game ? `<p>${t('pickCell')}</p>` : ''}${switches}</div>`
+}
+
 /** what the game has to say right now: the result, a message, or the facts about an element */
 function note(g: Game, small: boolean): string {
   // on a small screen the note covers the buttons, so it carries the one that matters
@@ -302,14 +342,14 @@ function note(g: Game, small: boolean): string {
   const say = g.head >= 0 && !g.say.text ? t('swapHint') : g.say.text
   const fill = g.say.tone === 'tip' && g.target >= 0 && g.cells[g.target] < 0 ? `<button class="fill" data-act="hint">${t('fillIn')}</button>` : ''
   const about = facts(g)
-  if (!say && !about) return small ? `<div class="say">${t('rule1')}<br>${t('rule2')}</div>` : `<div class="say quiet">${t('pickCell')}</div>`
+  if (!say && !about) return small ? explain() : ''
   return (say ? `<div class="say ${g.say.tone}">${esc(say)}${fill}</div>` : '') + about
 }
 
 function play(g: Game): string {
   const n = g.n, small = compact()
   // a small screen gets two rows of keys once one row would make them too narrow to press
-  const rows = small && n + 1 > 9 ? 2 : 1, perRow = Math.ceil((n + 1) / rows)
+  const rows = Math.ceil((n + 1) / (small ? 9 : 13)), perRow = Math.ceil((n + 1) / rows)
   const keys = [...Array(n).keys()].map((v) => `<button data-put="${v}" style="background:${tint(v, n)};border-color:${stroke(v, n)};color:${glow(v, n)}">${L(v)}</button>`).join('')
   const chips = g.done ? '' : `<div class="chips" style="--per-row:${perRow}">${keys}<button class="wide" data-put="-1" aria-label="${t('erase')}">⌫</button></div>`
   const actions = g.done
@@ -322,18 +362,21 @@ function play(g: Game): string {
   const unfold = g.fx.fresh ? ' unfold' : ''
   if (small) return `<div class="play small${unfold}" style="--key-rows:${g.done ? 0 : rows}"><div class="boardcol">${board(g)}</div>
     <div class="controls">${chips}${actions}</div>${g.info ? `<div class="sheet" data-layer>${note(g, true)}</div>` : ''}</div>`
-  return `<div class="play${unfold}"><div class="boardcol">${board(g)}${chips}</div><div class="side">${note(g, false)}${actions}</div></div>`
+  return `<div class="play${unfold}" style="--key-rows:${g.done ? 0 : rows}"><div class="boardcol">${board(g)}${chips}</div><div class="side">${note(g, false)}${actions}</div></div>`
 }
 
 function leave() {
-  game = undefined; fresh = true
+  game = undefined; fresh = true; waiting = undefined
   history.replaceState(null, '', location.pathname + location.search)
 }
+
+// while a puzzle is being made: a small table whose cells light up in a wave along the diagonals
+const LOOM = [...Array(16).keys()].map((i) => `<i style="animation-delay:${((i >> 2) + (i & 3)) * 110}ms;--tone:${glow((i >> 2) + (i & 3), 7)}"></i>`).join('')
 
 /** Every change redraws the screen, so anything that should move only once is flagged, drawn, and unflagged. */
 function render() {
   app.classList.toggle('playing', !!game)
-  app.innerHTML = top() + (game ? play(game) : home())
+  app.innerHTML = top() + (game ? play(game) : home()) + (help ? `<div class="help" data-layer>${explain()}</div>` : '') + (waiting === undefined ? '' : `<div class="brewing" data-layer><div class="loom">${LOOM}</div><span>${t('drawing')}</span></div>`)
   fresh = false
   if (game) game.fx = { fresh: false, put: [], hint: false, bad: false, won: false }
 }
@@ -376,6 +419,7 @@ app.addEventListener('click', (ev) => {
   else if (d.act === 'next' && game) start(game.mode, game.n)
   else if (d.pick) { picked = d.pick; render() }
   else if ('info' in d && game) { game.info = !game.info; render() }
+  else if ('help' in d) { help = !help; render() }
   else if ('copy' in d && game?.code) void navigator.clipboard?.writeText(location.href)
   else if (d.toggle === 'sound') { save.sound = audio.soundOn = !save.sound; store(save); render() }
   else if (d.toggle === 'lang') { save.lang = getLang() === 'en' ? 'zh' : 'en'; setLang(save.lang); store(save); if (game && !game.say.tone) game.say.text = ''; render() }
@@ -405,6 +449,7 @@ window.addEventListener('resize', () => render())
 // a touch anywhere outside the unfolded note folds it away; the touch still does what it would have done
 document.addEventListener('pointerdown', (ev) => {
   const el = ev.target as Element
+  if (help && !el.closest('.help, [data-help]')) { help = false; app.querySelector('.help')?.remove(); app.querySelector('[data-help]')?.classList.remove('open') }
   if (game?.info && compact() && !el.closest('.sheet, [data-info]')) { game.info = false; app.querySelector('.sheet')?.remove(); app.querySelector('.info')?.classList.remove('open') }
 }, true)
 // a star cluster can be opened from the keyboard too
@@ -416,10 +461,8 @@ function follow() {
   const named = parseCode(location.hash.slice(1))
   if (!named) return false
   if (game?.code === location.hash.slice(1)) return true
-  const session = newPuzzle(named.n, named.difficulty, named.seed)
-  if (!session) return false
-  save.difficulty = named.difficulty; open(session)
-  return true
+  save.difficulty = named.difficulty
+  return conjure(named.n, named.difficulty, named.seed)
 }
 window.addEventListener('hashchange', follow)
 if (!follow()) render()

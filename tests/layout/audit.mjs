@@ -32,6 +32,14 @@ function probe() {
     if ((dy > 1 && cs.overflowY !== 'visible') || (dx > 1 && cs.overflowX !== 'visible')) found.push({ what: cs.overflowY === 'hidden' || cs.overflowX === 'hidden' ? 'content is cut off' : 'content scrolls inside', where: name(el), by: `${Math.max(dx, 0)}x${Math.max(dy, 0)}` })
     if (r.right > vw + 1 || r.bottom > vh + 1 || r.left < -1 || r.top < -1) found.push({ what: 'reaches outside the window', where: name(el), by: `${Math.round(Math.max(r.right - vw, -r.left, 0))}x${Math.round(Math.max(r.bottom - vh, -r.top, 0))}` })
   }
+  // a drawing must hold everything in it: a star cluster's halo covers its orbit, and must lie inside the chart
+  for (const svg of document.querySelectorAll('#app svg.chart')) {
+    const box = svg.getBoundingClientRect()
+    for (const halo of svg.querySelectorAll('.halo')) {
+      const r = halo.getBoundingClientRect()
+      if (r.left < box.left - 1 || r.top < box.top - 1 || r.right > box.right + 1 || r.bottom > box.bottom + 1) { found.push({ what: 'cut off by the edge of its own drawing', where: 'svg.chart .node', by: '' }); break }
+    }
+  }
   // every control must be reachable: whatever is on top at its centre has to be the control itself
   for (const el of document.querySelectorAll('#app button, #app input, #app .node')) {
     const r = el.getBoundingClientRect()
@@ -44,7 +52,9 @@ function probe() {
   return found
 }
 
-const server = await preview({ preview: { port: 4399, host: '127.0.0.1', strictPort: true }, logLevel: 'silent' })
+// SIZE=391,1366 and LANG_=en narrow the walk; several can run side by side on different PORTs
+const PORT = +(process.env.PORT ?? 4399)
+const server = await preview({ preview: { port: PORT, host: '127.0.0.1', strictPort: true }, logLevel: 'silent' })
 const browser = await chromium.launch({ executablePath: process.env.CHROME, args: ['--no-sandbox', '--no-proxy-server'] })
 const tally = new Map() // "what | where" -> { count, sizes:Set, states:Set, worst }
 let checks = 0
@@ -64,7 +74,11 @@ for (const [w, h] of only('SIZE', SIZES)) for (const lang of only('LANG_', LANGS
       tally.set(key, t)
     }
   }
-  const open = async (hash) => { await page.goto(`http://127.0.0.1:4399/${hash}`); await page.waitForSelector('#app > *'); await page.evaluate(() => document.fonts.ready) }
+  const open = async (hash) => {
+    await page.goto(`http://127.0.0.1:${PORT}/${hash}`); await page.waitForSelector('#app > *'); await page.evaluate(() => document.fonts.ready)
+    // a puzzle is made on another thread: look at the waiting screen, then wait for this puzzle's own board
+    if (hash) { await check('a puzzle is being made'); await page.waitForFunction((code) => !document.querySelector('.brewing') && document.querySelector('#board') && document.querySelector('.code, .info') && location.hash === code, hash, { timeout: 120000 }) }
+  }
   // controls are pressed by event, not by pointer, so that a layout that is wrong cannot stop the walk
   const press = (selector) => page.dispatchEvent(selector, 'click')
   const cell = async (n, r, c) => {
@@ -77,14 +91,18 @@ for (const [w, h] of only('SIZE', SIZES)) for (const lang of only('LANG_', LANGS
   await check('home')
   for (const d of ['normal', 'expert', 'easy']) { await press(`[data-level="${d}"]`); await check(`home, ${d}`) }
   await press('[data-tab="build"]'); await check('home, build')
+  await press('[data-help]'); await check('home, build, the explanation open'); await press('[data-help]')
+  await press('[data-tab="puzzles"]'); await press('[data-help]'); await check('home, the explanation open'); await press('[data-help]')
 
   // puzzles: every state on the way from fresh to solved
-  for (const [n, d, seed] of [[2, 'e', 1], [3, 'e', 1], [4, 'n', 3], [8, 'e', 5], [8, 'x', 2], [12, 'e', 4], [12, 'x', 9]]) {
+  for (const [n, d, seed] of [[2, 'e', 1], [3, 'e', 1], [4, 'n', 3], [8, 'e', 5], [8, 'x', 2], [12, 'x', 9], [16, 'n', 4], [20, 'e', 1], [20, 'x', 2]]) {
     await open(`#${n}-${d}-${seed}`)
     const tag = `order ${n} ${d}`
     await check(`${tag}: fresh`)
     await cell(n, 0, 0); await check(`${tag}: a cell selected`)
     await cell(n, -1, 0); await check(`${tag}: a header selected`)
+    if (await page.$('[data-help]')) { await press('[data-help]'); await check(`${tag}: the explanation open`); await press('[data-help]') }
+    else { await cell(n, -1, 0); await press('[data-info]'); await check(`${tag}: the note open with nothing to say`); await press('[data-info]'); await cell(n, -1, 0) }
     await cell(n, -1, 0)
     // a wrong move: repeat a value in its own row
     for (let i = 0; i < n * n + 5; i++) {

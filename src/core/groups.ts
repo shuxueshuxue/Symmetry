@@ -1,4 +1,4 @@
-// The catalogue: every group of order 2..12, built from its definition.
+// The catalogue: every group of order 2..20, built from its definition.
 // A table is row-major: t[a * n + b] = a·b. Element 0 is always the identity here.
 
 export type Table = Int8Array
@@ -66,7 +66,24 @@ function fromPermutations(gens: number[][]): Table {
   return t
 }
 
+/**
+ * N extended by a cyclic group of order k acting through the automorphism phi (given as where each element of N goes).
+ * Element (x, j) has index x + |N|·j, and (x, i)(y, j) = (x · phiⁱ(y), i + j).
+ */
+function semidirect(N: Table, phi: (x: number) => number, k: number): Table {
+  const m = Math.round(Math.sqrt(N.length)), n = m * k, t = new Int8Array(n * n)
+  const power: number[][] = [[...Array(m).keys()]]
+  for (let j = 1; j < k; j++) power.push(power[j - 1].map(phi))
+  for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) {
+    const x = a % m, i = Math.floor(a / m), y = b % m, j = Math.floor(b / m)
+    t[a * n + b] = N[x * m + power[i][y]] + m * ((i + j) % k)
+  }
+  return t
+}
+
 const C = cyclic
+/** a^m = x^k = 1, x a x⁻¹ = a^r */
+const metacyclic = (m: number, k: number, r: number) => semidirect(C(m), (i) => (i * r) % m, k)
 const sub = (k: number) => String(k).split('').map((d) => '₀₁₂₃₄₅₆₇₈₉'[+d]).join('')
 
 function entry(id: string, name: string, table: Table): GroupInfo {
@@ -76,23 +93,53 @@ function entry(id: string, name: string, table: Table): GroupInfo {
   return { id, name, order: n, table, abelian }
 }
 
+export const ORDERS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+
+const C4xC2 = product(C(4), C(2)) // a^i b^j has index 2i + j
+const C3xC3 = product(C(3), C(3))
+
+/** Every group with at most 20 elements, 53 of them. tests/core.test.ts checks the count at each order and that no two are the same group. */
 export const GROUPS: GroupInfo[] = [
-  ...[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => entry(`C${n}`, `C${sub(n)}`, C(n))),
+  ...ORDERS.map((n) => entry(`C${n}`, `C${sub(n)}`, C(n))),
   entry('V4', 'C₂×C₂', product(C(2), C(2))),
   entry('S3', 'S₃', dihedral(3)),
-  entry('C4xC2', 'C₄×C₂', product(C(4), C(2))),
+  entry('C4xC2', 'C₄×C₂', C4xC2),
   entry('C2xC2xC2', 'C₂×C₂×C₂', product(product(C(2), C(2)), C(2))),
   entry('D4', 'D₄', dihedral(4)),
   entry('Q8', 'Q₈', dicyclic(2)),
-  entry('C3xC3', 'C₃×C₃', product(C(3), C(3))),
+  entry('C3xC3', 'C₃×C₃', C3xC3),
   entry('D5', 'D₅', dihedral(5)),
   entry('C6xC2', 'C₆×C₂', product(C(6), C(2))),
   entry('D6', 'D₆', dihedral(6)),
   entry('A4', 'A₄', fromPermutations([[1, 2, 0, 3], [1, 0, 3, 2]])),
   entry('Dic3', 'Dic₃', dicyclic(3)),
+  entry('D7', 'D₇', dihedral(7)),
+  // the fourteen of order 16
+  entry('C8xC2', 'C₈×C₂', product(C(8), C(2))),
+  entry('C4xC4', 'C₄×C₄', product(C(4), C(4))),
+  entry('C4xC2xC2', 'C₄×C₂×C₂', product(C4xC2, C(2))),
+  entry('C2^4', 'C₂⁴', product(product(C(2), C(2)), product(C(2), C(2)))),
+  entry('D8', 'D₈', dihedral(8)),
+  entry('Q16', 'Q₁₆', dicyclic(4)),
+  entry('SD16', 'SD₁₆', metacyclic(8, 2, 3)),
+  entry('M16', 'M₁₆', metacyclic(8, 2, 5)),
+  entry('D4xC2', 'D₄×C₂', product(dihedral(4), C(2))),
+  entry('Q8xC2', 'Q₈×C₂', product(dicyclic(2), C(2))),
+  entry('C4:C4', 'C₄⋊C₄', metacyclic(4, 4, 3)),
+  entry('C4xC2:C2', '(C₄×C₂)⋊C₂', semidirect(C4xC2, (x) => (x >> 1) * 2 + (((x >> 1) + x) & 1), 2)), // a ↦ ab, b ↦ b
+  entry('C4oD4', 'C₄∘D₄', semidirect(C4xC2, (x) => (((x >> 1) + 2 * (x & 1)) % 4) * 2 + (x & 1), 2)),  // a ↦ a, b ↦ a²b
+  // order 18
+  entry('C6xC3', 'C₆×C₃', product(C(6), C(3))),
+  entry('D9', 'D₉', dihedral(9)),
+  entry('S3xC3', 'S₃×C₃', product(dihedral(3), C(3))),
+  entry('C3xC3:C2', '(C₃×C₃)⋊C₂', semidirect(C3xC3, (x) => ((3 - Math.floor(x / 3)) % 3) * 3 + ((3 - (x % 3)) % 3), 2)), // every element inverted
+  // order 20
+  entry('C10xC2', 'C₁₀×C₂', product(C(10), C(2))),
+  entry('D10', 'D₁₀', dihedral(10)),
+  entry('Dic5', 'Dic₅', dicyclic(5)),
+  entry('F20', 'F₂₀', metacyclic(5, 4, 2)),
 ].sort((a, b) => a.order - b.order)
 
-export const ORDERS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 export const groupsOfOrder = (n: number) => GROUPS.filter((g) => g.order === n)
 export const groupById = (id: string) => GROUPS.find((g) => g.id === id)!
 

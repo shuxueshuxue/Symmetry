@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "test": "vitest run",
+    "test": "vitest run --exclude \"tests/slow/**\" --exclude \"node_modules/**\"",
     "audit:layout": "node tests/layout/audit.mjs",
     "cli": "node cli/main.ts",
-    "build:cli": "esbuild cli/main.ts --bundle --platform=node --format=esm --target=node18 --outfile=bin/symmetry.mjs"
+    "build:cli": "esbuild cli/main.ts --bundle --platform=node --format=esm --target=node18 --outfile=bin/symmetry.mjs",
+    "test:all": "vitest run"
   },
   "devDependencies": {
     "@types/node": "^22.20.7",

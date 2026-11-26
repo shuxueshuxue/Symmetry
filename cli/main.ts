@@ -8,7 +8,7 @@ import { DIFFICULTIES, generateFor, mulberry32, type Difficulty } from '../src/c
 import { elementFacts } from '../src/core/structure.ts'
 import { advise, fromJSON, inspect, newBuild, newPuzzle, parseCode, place, restart, swapElements, toJSON, undo, type Report, type Session } from '../src/game/session.ts'
 import { emptyProgress, recordArrangement, recordSolve, type Progress } from '../src/game/progress.ts'
-import { conflictText, hintText } from '../src/game/words.ts'
+import { conflictText, hintText, mistakeText } from '../src/game/words.ts'
 import { about, orderOf, setLang, t } from '../src/i18n.ts'
 import { fileStore, home } from './files.ts'
 import { drawTable } from './draw.ts'
@@ -134,7 +134,7 @@ function run(cmd: string, args: string[]): Reply {
       const s = current()
       if (s.mode === 'build') refuse('There are no hints when building: any group will do.')
       const a = advise(s) ?? refuse('Nothing left to hint at.')
-      if (a.kind === 'mistake') return { ok: true, message: t('hintMistake', { r: Math.floor(a.at / s.n) + 1, c: (a.at % s.n) + 1 }), session: s, marks: [a.at], extra: { hint: { kind: 'mistake', row: Math.floor(a.at / s.n), column: a.at % s.n } } }
+      if (a.kind === 'mistake') return { ok: true, message: mistakeText(s.n, a.at), session: s, marks: [a.at], extra: { hint: { kind: 'mistake', row: Math.floor(a.at / s.n), column: a.at % s.n } } }
       const h = a.hint, at = h.r * s.n + h.c
       let message = hintText(h)
       if (flags.fill) { const r = place(s, at, h.v)!; message += ' ' + after(s, r) }

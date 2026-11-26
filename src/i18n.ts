@@ -36,8 +36,8 @@ const en = {
   elementsOfOrder: 'elements by order',
   arrange: 'Swap elements so that a normal subgroup comes first: the table falls into blocks, and the blocks are the quotient group.',
   chain: 'Leading normal subgroups', chainNone: 'none in this arrangement', quotient: 'quotient',
-  notFound: 'not found yet', collectionIntro: 'Every group with at most 12 elements. Solve a puzzle or build a table to find one.',
-  copyLink: 'copy a link to this puzzle',
+  notFound: 'not found yet', collectionIntro: 'Every group with at most 20 elements. Solve a puzzle or build a table to find one.',
+  copyLink: 'copy a link to this puzzle', drawing: 'drawing a table…',
   sound: 'sound', on: 'on', off: 'off', hintsUsed: 'hints',
 }
 
@@ -60,15 +60,15 @@ const zh: typeof en = {
   element: '元素', elOrder: '阶', elInverse: '逆元', elCommutes: '与之交换', elConj: '共轭', elIdentity: '单位元',
   unknown: '?', pickCell: '先选一格，再选一个值。点两个表头可以对调两个元素。',
   swapHint: '再点另一个表头，对调这两个元素。',
-  hintCell: '第 {r} 行和第 {c} 列里，除了 {v} 都已经出现过了。',
-  hintRow: '第 {r} 行里，{v} 只能放在第 {c} 列。',
-  hintCol: '第 {c} 列里，{v} 只能放在第 {r} 行。',
+  hintCell: '{r} 行和 {c} 列里，除了 {v} 都已经出现过了。',
+  hintRow: '{r} 行里，{v} 只能放在 {c} 列。',
+  hintCol: '{c} 列里，{v} 只能放在 {r} 行。',
   hintAssoc: '({a}·{b})·{c} = {a}·({b}·{c})。这里 {a}·{b} = {x}，{b}·{c} = {y}，所以 {x}·{c} 和 {a}·{y} 是同一个元素。其中一个是 {v}，另一个也是。',
-  hintChain: '把两条规则连用几次，第 {r} 行第 {c} 列只剩下 {v}。',
-  hintSuppose: '没有能直接推出的格子。看第 {r} 行第 {c} 列：假设它是 {wrong}，接着往下推，规则就会被打破。所以它只能是 {v}。',
-  hintSupposeNone: '第 {r} 行第 {c} 列只能是 {v}：规则只允许这一个值。',
+  hintChain: '把两条规则连用几次，{r} 行 {c} 列只剩下 {v}。',
+  hintSuppose: '没有能直接推出的格子。看 {r} 行 {c} 列：假设它是 {wrong}，接着往下推，规则就会被打破。所以它只能是 {v}。',
+  hintSupposeNone: '{r} 行 {c} 列只能是 {v}：规则只允许这一个值。',
   fillIn: '填入', info: '说明', pickOne: '点一个印章，看它是哪个群。',
-  hintMistake: '第 {r} 行第 {c} 列填得不对。擦掉再试。',
+  hintMistake: '{r} 行 {c} 列填得不对。擦掉再试。',
   conflictRow: '同一行里有重复的值。',
   conflictCol: '同一列里有重复的值。',
   conflictAssoc: '结合律被打破：({a}·{b})·{c} ≠ {a}·({b}·{c})。',
@@ -77,8 +77,8 @@ const zh: typeof en = {
   elementsOfOrder: '各阶元素个数',
   arrange: '对调元素，把一个正规子群排到最前面：表会分成一块一块，这些块就是商群。',
   chain: '排在最前面的正规子群', chainNone: '这种排法下没有', quotient: '商群',
-  notFound: '还没发现', collectionIntro: '不超过 12 个元素的全部群。解一道谜题或者造一张表来发现它们。',
-  copyLink: '复制这道题的链接',
+  notFound: '还没发现', collectionIntro: '不超过 20 个元素的全部群。解一道谜题或者造一张表来发现它们。',
+  copyLink: '复制这道题的链接', drawing: '正在出题…',
   sound: '音效', on: '开', off: '关', hintsUsed: '提示',
 }
 
@@ -111,9 +111,29 @@ const ABOUT: Record<string, [en: string, zh: string]> = {
   D6: ['The symmetries of a regular hexagon.', '正六边形的对称。'],
   A4: ['The rotations of a tetrahedron. Twelve elements, yet no subgroup of six: the converse of Lagrange fails here.', '正四面体的旋转。有 12 个元素，却没有 6 阶子群：拉格朗日定理的逆在这里不成立。'],
   Dic3: ['The dicyclic group: not commutative, with elements of order 4 and a single element of order 2.', '双循环群：不交换，有 4 阶元素，2 阶元素只有一个。'],
+  Dic5: ['A dicyclic group: like the symmetries of a decagon, except that the "flips" have order 4.', '双循环群：像正十边形的对称，只是那些「翻转」的阶是 4。'],
+  D: ['The symmetries of a regular polygon with {k} sides: {k} rotations and {k} flips.', '正 {k} 边形的对称：{k} 个旋转，{k} 个翻转。'],
+  C8xC2: ['An eighth-turn and an independent switch.', '一个八分之一转，加一个独立的开关。'],
+  C4xC4: ['Two independent quarter-turns.', '两个互不相干的四分之一转。'],
+  C4xC2xC2: ['A quarter-turn and two independent switches.', '一个四分之一转，加两个独立的开关。'],
+  'C2^4': ['Four independent switches. Every element undoes itself; it has 20160 symmetries of its own.', '四个互不相干的开关。每个元素都是自己的逆元；它自己有 20160 个自同构。'],
+  Q16: ['The generalized quaternion group: sixteen elements and still only one of order 2.', '广义四元数群：16 个元素，2 阶元素仍然只有一个。'],
+  SD16: ['The semidihedral group: an eighth-turn a and a flip that sends a to a³. Halfway between D₈ and Q₁₆.', '半二面体群：一个八分之一转 a，和一个把 a 变成 a³ 的翻转。介于 D₈ 和 Q₁₆ 之间。'],
+  M16: ['The modular group: nearly commutative. Its flip sends an eighth-turn a to a⁵, and its subgroups are arranged exactly as in C₈×C₂.', '模群：差一点就交换。翻转把八分之一转 a 变成 a⁵，子群的排布和 C₈×C₂ 一模一样。'],
+  D4xC2: ['The symmetries of a square, and an independent switch.', '正方形的对称，加一个独立的开关。'],
+  Q8xC2: ['The quaternions and an independent switch: every subgroup is normal, yet it does not commute.', '四元数群加一个独立的开关：所有子群都正规，却不交换。'],
+  'C4:C4': ['Two quarter-turns, where one turns the other backwards.', '两个四分之一转，其中一个会把另一个倒过来。'],
+  'C4xC2:C2': ['A quarter-turn a and a switch b that commute, and a flip that turns a into ab.', '一个四分之一转 a 和一个开关 b 彼此交换，再加一个把 a 变成 ab 的翻转。'],
+  C4oD4: ['The Pauli group of quantum mechanics: the matrices X, Y, Z and their products with ±1, ±i.', '量子力学里的泡利群：矩阵 X、Y、Z 以及它们与 ±1、±i 的乘积。'],
+  C6xC3: ['A sixth-turn and an independent third-turn.', '一个六分之一转，加一个独立的三分之一转。'],
+  S3xC3: ['The symmetries of a triangle, and an independent third-turn.', '正三角形的对称，加一个独立的三分之一转。'],
+  'C3xC3:C2': ['Two independent third-turns and one flip that reverses them both.', '两个互不相干的三分之一转，加一个把它们同时倒过来的翻转。'],
+  C10xC2: ['A tenth-turn and an independent switch.', '一个十分之一转，加一个独立的开关。'],
+  F20: ['The Frobenius group: all the maps x ↦ ax + b on five points. Its flips have order 4.', '弗罗贝尼乌斯群：五个点上全部 x ↦ ax + b 的变换。它的「翻转」阶为 4。'],
 }
-const PRIMES = new Set([2, 3, 5, 7, 11])
+const PRIMES = new Set([2, 3, 5, 7, 11, 13, 17, 19])
 export function about(id: string, order: number): string {
-  const row = ABOUT[id] ?? (PRIMES.has(order) ? ABOUT.Cp : ABOUT.C)
-  return row[lang === 'en' ? 0 : 1]
+  const sides = /^D(\d+)$/.exec(id)
+  const row = ABOUT[id] ?? (sides ? ABOUT.D : PRIMES.has(order) ? ABOUT.Cp : ABOUT.C)
+  return row[lang === 'en' ? 0 : 1].replace(/\{k\}/g, sides?.[1] ?? '')
 }

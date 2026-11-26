@@ -56,7 +56,18 @@ function fromPermutations(gens) {
   for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) t2[a * n + b] = index.get(key(mul(els[a], els[b])));
   return t2;
 }
+function semidirect(N, phi, k) {
+  const m = Math.round(Math.sqrt(N.length)), n = m * k, t2 = new Int8Array(n * n);
+  const power = [[...Array(m).keys()]];
+  for (let j = 1; j < k; j++) power.push(power[j - 1].map(phi));
+  for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) {
+    const x = a % m, i = Math.floor(a / m), y = b % m, j = Math.floor(b / m);
+    t2[a * n + b] = N[x * m + power[i][y]] + m * ((i + j) % k);
+  }
+  return t2;
+}
 var C = cyclic;
+var metacyclic = (m, k, r) => semidirect(C(m), (i) => i * r % m, k);
 var sub = (k) => String(k).split("").map((d) => "\u2080\u2081\u2082\u2083\u2084\u2085\u2086\u2087\u2088\u2089"[+d]).join("");
 function entry(id, name, table) {
   const n = Math.round(Math.sqrt(table.length));
@@ -67,22 +78,52 @@ function entry(id, name, table) {
   }
   return { id, name, order: n, table, abelian };
 }
+var ORDERS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+var C4xC2 = product(C(4), C(2));
+var C3xC3 = product(C(3), C(3));
 var GROUPS = [
-  ...[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => entry(`C${n}`, `C${sub(n)}`, C(n))),
+  ...ORDERS.map((n) => entry(`C${n}`, `C${sub(n)}`, C(n))),
   entry("V4", "C\u2082\xD7C\u2082", product(C(2), C(2))),
   entry("S3", "S\u2083", dihedral(3)),
-  entry("C4xC2", "C\u2084\xD7C\u2082", product(C(4), C(2))),
+  entry("C4xC2", "C\u2084\xD7C\u2082", C4xC2),
   entry("C2xC2xC2", "C\u2082\xD7C\u2082\xD7C\u2082", product(product(C(2), C(2)), C(2))),
   entry("D4", "D\u2084", dihedral(4)),
   entry("Q8", "Q\u2088", dicyclic(2)),
-  entry("C3xC3", "C\u2083\xD7C\u2083", product(C(3), C(3))),
+  entry("C3xC3", "C\u2083\xD7C\u2083", C3xC3),
   entry("D5", "D\u2085", dihedral(5)),
   entry("C6xC2", "C\u2086\xD7C\u2082", product(C(6), C(2))),
   entry("D6", "D\u2086", dihedral(6)),
   entry("A4", "A\u2084", fromPermutations([[1, 2, 0, 3], [1, 0, 3, 2]])),
-  entry("Dic3", "Dic\u2083", dicyclic(3))
+  entry("Dic3", "Dic\u2083", dicyclic(3)),
+  entry("D7", "D\u2087", dihedral(7)),
+  // the fourteen of order 16
+  entry("C8xC2", "C\u2088\xD7C\u2082", product(C(8), C(2))),
+  entry("C4xC4", "C\u2084\xD7C\u2084", product(C(4), C(4))),
+  entry("C4xC2xC2", "C\u2084\xD7C\u2082\xD7C\u2082", product(C4xC2, C(2))),
+  entry("C2^4", "C\u2082\u2074", product(product(C(2), C(2)), product(C(2), C(2)))),
+  entry("D8", "D\u2088", dihedral(8)),
+  entry("Q16", "Q\u2081\u2086", dicyclic(4)),
+  entry("SD16", "SD\u2081\u2086", metacyclic(8, 2, 3)),
+  entry("M16", "M\u2081\u2086", metacyclic(8, 2, 5)),
+  entry("D4xC2", "D\u2084\xD7C\u2082", product(dihedral(4), C(2))),
+  entry("Q8xC2", "Q\u2088\xD7C\u2082", product(dicyclic(2), C(2))),
+  entry("C4:C4", "C\u2084\u22CAC\u2084", metacyclic(4, 4, 3)),
+  entry("C4xC2:C2", "(C\u2084\xD7C\u2082)\u22CAC\u2082", semidirect(C4xC2, (x) => (x >> 1) * 2 + ((x >> 1) + x & 1), 2)),
+  // a ↦ ab, b ↦ b
+  entry("C4oD4", "C\u2084\u2218D\u2084", semidirect(C4xC2, (x) => ((x >> 1) + 2 * (x & 1)) % 4 * 2 + (x & 1), 2)),
+  // a ↦ a, b ↦ a²b
+  // order 18
+  entry("C6xC3", "C\u2086\xD7C\u2083", product(C(6), C(3))),
+  entry("D9", "D\u2089", dihedral(9)),
+  entry("S3xC3", "S\u2083\xD7C\u2083", product(dihedral(3), C(3))),
+  entry("C3xC3:C2", "(C\u2083\xD7C\u2083)\u22CAC\u2082", semidirect(C3xC3, (x) => (3 - Math.floor(x / 3)) % 3 * 3 + (3 - x % 3) % 3, 2)),
+  // every element inverted
+  // order 20
+  entry("C10xC2", "C\u2081\u2080\xD7C\u2082", product(C(10), C(2))),
+  entry("D10", "D\u2081\u2080", dihedral(10)),
+  entry("Dic5", "Dic\u2085", dicyclic(5)),
+  entry("F20", "F\u2082\u2080", metacyclic(5, 4, 2))
 ].sort((a, b) => a.order - b.order);
-var ORDERS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 var groupsOfOrder = (n) => GROUPS.filter((g) => g.order === n);
 var groupById = (id) => GROUPS.find((g) => g.id === id);
 var LABELS = "0123456789ABCDEFGHJK";
@@ -127,10 +168,27 @@ function divisions(g) {
   }
   return d;
 }
-function numberings(g, clues, order, visit) {
+var repsCache = /* @__PURE__ */ new Map();
+function orbitReps(g) {
+  let reps = repsCache.get(g.id);
+  if (!reps) {
+    const n = g.order, root = [...Array(n).keys()];
+    const find = (x) => root[x] === x ? x : root[x] = find(root[x]);
+    const all = [];
+    for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) all.push([a, b, g.table[a * n + b]]);
+    numberings(g, all, root.slice(), false, (phi) => {
+      for (let x = 0; x < n; x++) root[find(x)] = find(phi[x]);
+      return false;
+    });
+    repsCache.set(g.id, reps = [...new Set(root.map((_, x) => find(x)))]);
+  }
+  return reps;
+}
+function numberings(g, clues, order, upToSymmetry, visit) {
   const n = g.order, M = g.table, { L: L2, R } = divisions(g);
   const phi = new Int8Array(n).fill(-1), used = new Uint8Array(n);
   const trail = [];
+  const everything = [...Array(n).keys()], first = upToSymmetry ? orbitReps(g) : everything;
   const set = (label2, el) => {
     if (used[el]) return false;
     phi[label2] = el;
@@ -162,14 +220,14 @@ function numberings(g, clues, order, visit) {
     }
     return true;
   };
-  const rec = () => {
+  const rec = (depth) => {
     const label2 = order.find((x) => phi[x] < 0);
     if (label2 === void 0) return visit(phi);
-    for (let el = 0; el < n; el++) {
+    for (const el of depth === 0 ? first : everything) {
       if (used[el]) continue;
       const mark = trail.length;
       set(label2, el);
-      if (propagate() && rec()) return true;
+      if (propagate() && rec(depth + 1)) return true;
       while (trail.length > mark) {
         const x = trail.pop();
         used[phi[x]] = 0;
@@ -178,7 +236,7 @@ function numberings(g, clues, order, visit) {
     }
     return false;
   };
-  return rec();
+  return rec(0);
 }
 function tables(n, clues, limit = 2) {
   const weight = new Array(n).fill(0);
@@ -188,7 +246,7 @@ function tables(n, clues, limit = 2) {
   for (const g of GROUPS) {
     if (g.order !== n) continue;
     const M = g.table;
-    const stop = numberings(g, clues, order, (phi) => {
+    const stop = numberings(g, clues, order, true, (phi) => {
       const inv = new Int8Array(n);
       for (let i = 0; i < n; i++) inv[phi[i]] = i;
       const t2 = new Int8Array(n * n);
@@ -691,7 +749,10 @@ function parseCode(code) {
 var randomSeed = () => (Date.now() ^ Math.random() * 2 ** 31) >>> 0;
 function newPuzzle(n, difficulty, seed = randomSeed()) {
   const p = generate(n, difficulty, mulberry32(seed));
-  if (!p) return void 0;
+  return p && sessionFrom(p, seed);
+}
+function sessionFrom(p, seed) {
+  const n = p.n, difficulty = p.difficulty;
   const cells = new Int8Array(n * n).fill(-1), given = new Uint8Array(n * n);
   for (const [r, c, v] of p.givens) {
     cells[r * n + c] = v;
@@ -880,8 +941,9 @@ var en = {
   chainNone: "none in this arrangement",
   quotient: "quotient",
   notFound: "not found yet",
-  collectionIntro: "Every group with at most 12 elements. Solve a puzzle or build a table to find one.",
+  collectionIntro: "Every group with at most 20 elements. Solve a puzzle or build a table to find one.",
   copyLink: "copy a link to this puzzle",
+  drawing: "drawing a table\u2026",
   sound: "sound",
   on: "on",
   off: "off",
@@ -924,17 +986,17 @@ var zh = {
   unknown: "?",
   pickCell: "\u5148\u9009\u4E00\u683C\uFF0C\u518D\u9009\u4E00\u4E2A\u503C\u3002\u70B9\u4E24\u4E2A\u8868\u5934\u53EF\u4EE5\u5BF9\u8C03\u4E24\u4E2A\u5143\u7D20\u3002",
   swapHint: "\u518D\u70B9\u53E6\u4E00\u4E2A\u8868\u5934\uFF0C\u5BF9\u8C03\u8FD9\u4E24\u4E2A\u5143\u7D20\u3002",
-  hintCell: "\u7B2C {r} \u884C\u548C\u7B2C {c} \u5217\u91CC\uFF0C\u9664\u4E86 {v} \u90FD\u5DF2\u7ECF\u51FA\u73B0\u8FC7\u4E86\u3002",
-  hintRow: "\u7B2C {r} \u884C\u91CC\uFF0C{v} \u53EA\u80FD\u653E\u5728\u7B2C {c} \u5217\u3002",
-  hintCol: "\u7B2C {c} \u5217\u91CC\uFF0C{v} \u53EA\u80FD\u653E\u5728\u7B2C {r} \u884C\u3002",
+  hintCell: "{r} \u884C\u548C {c} \u5217\u91CC\uFF0C\u9664\u4E86 {v} \u90FD\u5DF2\u7ECF\u51FA\u73B0\u8FC7\u4E86\u3002",
+  hintRow: "{r} \u884C\u91CC\uFF0C{v} \u53EA\u80FD\u653E\u5728 {c} \u5217\u3002",
+  hintCol: "{c} \u5217\u91CC\uFF0C{v} \u53EA\u80FD\u653E\u5728 {r} \u884C\u3002",
   hintAssoc: "({a}\xB7{b})\xB7{c} = {a}\xB7({b}\xB7{c})\u3002\u8FD9\u91CC {a}\xB7{b} = {x}\uFF0C{b}\xB7{c} = {y}\uFF0C\u6240\u4EE5 {x}\xB7{c} \u548C {a}\xB7{y} \u662F\u540C\u4E00\u4E2A\u5143\u7D20\u3002\u5176\u4E2D\u4E00\u4E2A\u662F {v}\uFF0C\u53E6\u4E00\u4E2A\u4E5F\u662F\u3002",
-  hintChain: "\u628A\u4E24\u6761\u89C4\u5219\u8FDE\u7528\u51E0\u6B21\uFF0C\u7B2C {r} \u884C\u7B2C {c} \u5217\u53EA\u5269\u4E0B {v}\u3002",
-  hintSuppose: "\u6CA1\u6709\u80FD\u76F4\u63A5\u63A8\u51FA\u7684\u683C\u5B50\u3002\u770B\u7B2C {r} \u884C\u7B2C {c} \u5217\uFF1A\u5047\u8BBE\u5B83\u662F {wrong}\uFF0C\u63A5\u7740\u5F80\u4E0B\u63A8\uFF0C\u89C4\u5219\u5C31\u4F1A\u88AB\u6253\u7834\u3002\u6240\u4EE5\u5B83\u53EA\u80FD\u662F {v}\u3002",
-  hintSupposeNone: "\u7B2C {r} \u884C\u7B2C {c} \u5217\u53EA\u80FD\u662F {v}\uFF1A\u89C4\u5219\u53EA\u5141\u8BB8\u8FD9\u4E00\u4E2A\u503C\u3002",
+  hintChain: "\u628A\u4E24\u6761\u89C4\u5219\u8FDE\u7528\u51E0\u6B21\uFF0C{r} \u884C {c} \u5217\u53EA\u5269\u4E0B {v}\u3002",
+  hintSuppose: "\u6CA1\u6709\u80FD\u76F4\u63A5\u63A8\u51FA\u7684\u683C\u5B50\u3002\u770B {r} \u884C {c} \u5217\uFF1A\u5047\u8BBE\u5B83\u662F {wrong}\uFF0C\u63A5\u7740\u5F80\u4E0B\u63A8\uFF0C\u89C4\u5219\u5C31\u4F1A\u88AB\u6253\u7834\u3002\u6240\u4EE5\u5B83\u53EA\u80FD\u662F {v}\u3002",
+  hintSupposeNone: "{r} \u884C {c} \u5217\u53EA\u80FD\u662F {v}\uFF1A\u89C4\u5219\u53EA\u5141\u8BB8\u8FD9\u4E00\u4E2A\u503C\u3002",
   fillIn: "\u586B\u5165",
   info: "\u8BF4\u660E",
   pickOne: "\u70B9\u4E00\u4E2A\u5370\u7AE0\uFF0C\u770B\u5B83\u662F\u54EA\u4E2A\u7FA4\u3002",
-  hintMistake: "\u7B2C {r} \u884C\u7B2C {c} \u5217\u586B\u5F97\u4E0D\u5BF9\u3002\u64E6\u6389\u518D\u8BD5\u3002",
+  hintMistake: "{r} \u884C {c} \u5217\u586B\u5F97\u4E0D\u5BF9\u3002\u64E6\u6389\u518D\u8BD5\u3002",
   conflictRow: "\u540C\u4E00\u884C\u91CC\u6709\u91CD\u590D\u7684\u503C\u3002",
   conflictCol: "\u540C\u4E00\u5217\u91CC\u6709\u91CD\u590D\u7684\u503C\u3002",
   conflictAssoc: "\u7ED3\u5408\u5F8B\u88AB\u6253\u7834\uFF1A({a}\xB7{b})\xB7{c} \u2260 {a}\xB7({b}\xB7{c})\u3002",
@@ -950,8 +1012,9 @@ var zh = {
   chainNone: "\u8FD9\u79CD\u6392\u6CD5\u4E0B\u6CA1\u6709",
   quotient: "\u5546\u7FA4",
   notFound: "\u8FD8\u6CA1\u53D1\u73B0",
-  collectionIntro: "\u4E0D\u8D85\u8FC7 12 \u4E2A\u5143\u7D20\u7684\u5168\u90E8\u7FA4\u3002\u89E3\u4E00\u9053\u8C1C\u9898\u6216\u8005\u9020\u4E00\u5F20\u8868\u6765\u53D1\u73B0\u5B83\u4EEC\u3002",
+  collectionIntro: "\u4E0D\u8D85\u8FC7 20 \u4E2A\u5143\u7D20\u7684\u5168\u90E8\u7FA4\u3002\u89E3\u4E00\u9053\u8C1C\u9898\u6216\u8005\u9020\u4E00\u5F20\u8868\u6765\u53D1\u73B0\u5B83\u4EEC\u3002",
   copyLink: "\u590D\u5236\u8FD9\u9053\u9898\u7684\u94FE\u63A5",
+  drawing: "\u6B63\u5728\u51FA\u9898\u2026",
   sound: "\u97F3\u6548",
   on: "\u5F00",
   off: "\u5173",
@@ -982,18 +1045,38 @@ var ABOUT = {
   C6xC2: ["A sixth-turn and an independent switch.", "\u4E00\u4E2A\u516D\u5206\u4E4B\u4E00\u8F6C\uFF0C\u52A0\u4E00\u4E2A\u72EC\u7ACB\u7684\u5F00\u5173\u3002"],
   D6: ["The symmetries of a regular hexagon.", "\u6B63\u516D\u8FB9\u5F62\u7684\u5BF9\u79F0\u3002"],
   A4: ["The rotations of a tetrahedron. Twelve elements, yet no subgroup of six: the converse of Lagrange fails here.", "\u6B63\u56DB\u9762\u4F53\u7684\u65CB\u8F6C\u3002\u6709 12 \u4E2A\u5143\u7D20\uFF0C\u5374\u6CA1\u6709 6 \u9636\u5B50\u7FA4\uFF1A\u62C9\u683C\u6717\u65E5\u5B9A\u7406\u7684\u9006\u5728\u8FD9\u91CC\u4E0D\u6210\u7ACB\u3002"],
-  Dic3: ["The dicyclic group: not commutative, with elements of order 4 and a single element of order 2.", "\u53CC\u5FAA\u73AF\u7FA4\uFF1A\u4E0D\u4EA4\u6362\uFF0C\u6709 4 \u9636\u5143\u7D20\uFF0C2 \u9636\u5143\u7D20\u53EA\u6709\u4E00\u4E2A\u3002"]
+  Dic3: ["The dicyclic group: not commutative, with elements of order 4 and a single element of order 2.", "\u53CC\u5FAA\u73AF\u7FA4\uFF1A\u4E0D\u4EA4\u6362\uFF0C\u6709 4 \u9636\u5143\u7D20\uFF0C2 \u9636\u5143\u7D20\u53EA\u6709\u4E00\u4E2A\u3002"],
+  Dic5: ['A dicyclic group: like the symmetries of a decagon, except that the "flips" have order 4.', "\u53CC\u5FAA\u73AF\u7FA4\uFF1A\u50CF\u6B63\u5341\u8FB9\u5F62\u7684\u5BF9\u79F0\uFF0C\u53EA\u662F\u90A3\u4E9B\u300C\u7FFB\u8F6C\u300D\u7684\u9636\u662F 4\u3002"],
+  D: ["The symmetries of a regular polygon with {k} sides: {k} rotations and {k} flips.", "\u6B63 {k} \u8FB9\u5F62\u7684\u5BF9\u79F0\uFF1A{k} \u4E2A\u65CB\u8F6C\uFF0C{k} \u4E2A\u7FFB\u8F6C\u3002"],
+  C8xC2: ["An eighth-turn and an independent switch.", "\u4E00\u4E2A\u516B\u5206\u4E4B\u4E00\u8F6C\uFF0C\u52A0\u4E00\u4E2A\u72EC\u7ACB\u7684\u5F00\u5173\u3002"],
+  C4xC4: ["Two independent quarter-turns.", "\u4E24\u4E2A\u4E92\u4E0D\u76F8\u5E72\u7684\u56DB\u5206\u4E4B\u4E00\u8F6C\u3002"],
+  C4xC2xC2: ["A quarter-turn and two independent switches.", "\u4E00\u4E2A\u56DB\u5206\u4E4B\u4E00\u8F6C\uFF0C\u52A0\u4E24\u4E2A\u72EC\u7ACB\u7684\u5F00\u5173\u3002"],
+  "C2^4": ["Four independent switches. Every element undoes itself; it has 20160 symmetries of its own.", "\u56DB\u4E2A\u4E92\u4E0D\u76F8\u5E72\u7684\u5F00\u5173\u3002\u6BCF\u4E2A\u5143\u7D20\u90FD\u662F\u81EA\u5DF1\u7684\u9006\u5143\uFF1B\u5B83\u81EA\u5DF1\u6709 20160 \u4E2A\u81EA\u540C\u6784\u3002"],
+  Q16: ["The generalized quaternion group: sixteen elements and still only one of order 2.", "\u5E7F\u4E49\u56DB\u5143\u6570\u7FA4\uFF1A16 \u4E2A\u5143\u7D20\uFF0C2 \u9636\u5143\u7D20\u4ECD\u7136\u53EA\u6709\u4E00\u4E2A\u3002"],
+  SD16: ["The semidihedral group: an eighth-turn a and a flip that sends a to a\xB3. Halfway between D\u2088 and Q\u2081\u2086.", "\u534A\u4E8C\u9762\u4F53\u7FA4\uFF1A\u4E00\u4E2A\u516B\u5206\u4E4B\u4E00\u8F6C a\uFF0C\u548C\u4E00\u4E2A\u628A a \u53D8\u6210 a\xB3 \u7684\u7FFB\u8F6C\u3002\u4ECB\u4E8E D\u2088 \u548C Q\u2081\u2086 \u4E4B\u95F4\u3002"],
+  M16: ["The modular group: nearly commutative. Its flip sends an eighth-turn a to a\u2075, and its subgroups are arranged exactly as in C\u2088\xD7C\u2082.", "\u6A21\u7FA4\uFF1A\u5DEE\u4E00\u70B9\u5C31\u4EA4\u6362\u3002\u7FFB\u8F6C\u628A\u516B\u5206\u4E4B\u4E00\u8F6C a \u53D8\u6210 a\u2075\uFF0C\u5B50\u7FA4\u7684\u6392\u5E03\u548C C\u2088\xD7C\u2082 \u4E00\u6A21\u4E00\u6837\u3002"],
+  D4xC2: ["The symmetries of a square, and an independent switch.", "\u6B63\u65B9\u5F62\u7684\u5BF9\u79F0\uFF0C\u52A0\u4E00\u4E2A\u72EC\u7ACB\u7684\u5F00\u5173\u3002"],
+  Q8xC2: ["The quaternions and an independent switch: every subgroup is normal, yet it does not commute.", "\u56DB\u5143\u6570\u7FA4\u52A0\u4E00\u4E2A\u72EC\u7ACB\u7684\u5F00\u5173\uFF1A\u6240\u6709\u5B50\u7FA4\u90FD\u6B63\u89C4\uFF0C\u5374\u4E0D\u4EA4\u6362\u3002"],
+  "C4:C4": ["Two quarter-turns, where one turns the other backwards.", "\u4E24\u4E2A\u56DB\u5206\u4E4B\u4E00\u8F6C\uFF0C\u5176\u4E2D\u4E00\u4E2A\u4F1A\u628A\u53E6\u4E00\u4E2A\u5012\u8FC7\u6765\u3002"],
+  "C4xC2:C2": ["A quarter-turn a and a switch b that commute, and a flip that turns a into ab.", "\u4E00\u4E2A\u56DB\u5206\u4E4B\u4E00\u8F6C a \u548C\u4E00\u4E2A\u5F00\u5173 b \u5F7C\u6B64\u4EA4\u6362\uFF0C\u518D\u52A0\u4E00\u4E2A\u628A a \u53D8\u6210 ab \u7684\u7FFB\u8F6C\u3002"],
+  C4oD4: ["The Pauli group of quantum mechanics: the matrices X, Y, Z and their products with \xB11, \xB1i.", "\u91CF\u5B50\u529B\u5B66\u91CC\u7684\u6CE1\u5229\u7FA4\uFF1A\u77E9\u9635 X\u3001Y\u3001Z \u4EE5\u53CA\u5B83\u4EEC\u4E0E \xB11\u3001\xB1i \u7684\u4E58\u79EF\u3002"],
+  C6xC3: ["A sixth-turn and an independent third-turn.", "\u4E00\u4E2A\u516D\u5206\u4E4B\u4E00\u8F6C\uFF0C\u52A0\u4E00\u4E2A\u72EC\u7ACB\u7684\u4E09\u5206\u4E4B\u4E00\u8F6C\u3002"],
+  S3xC3: ["The symmetries of a triangle, and an independent third-turn.", "\u6B63\u4E09\u89D2\u5F62\u7684\u5BF9\u79F0\uFF0C\u52A0\u4E00\u4E2A\u72EC\u7ACB\u7684\u4E09\u5206\u4E4B\u4E00\u8F6C\u3002"],
+  "C3xC3:C2": ["Two independent third-turns and one flip that reverses them both.", "\u4E24\u4E2A\u4E92\u4E0D\u76F8\u5E72\u7684\u4E09\u5206\u4E4B\u4E00\u8F6C\uFF0C\u52A0\u4E00\u4E2A\u628A\u5B83\u4EEC\u540C\u65F6\u5012\u8FC7\u6765\u7684\u7FFB\u8F6C\u3002"],
+  C10xC2: ["A tenth-turn and an independent switch.", "\u4E00\u4E2A\u5341\u5206\u4E4B\u4E00\u8F6C\uFF0C\u52A0\u4E00\u4E2A\u72EC\u7ACB\u7684\u5F00\u5173\u3002"],
+  F20: ["The Frobenius group: all the maps x \u21A6 ax + b on five points. Its flips have order 4.", "\u5F17\u7F57\u8D1D\u5C3C\u4E4C\u65AF\u7FA4\uFF1A\u4E94\u4E2A\u70B9\u4E0A\u5168\u90E8 x \u21A6 ax + b \u7684\u53D8\u6362\u3002\u5B83\u7684\u300C\u7FFB\u8F6C\u300D\u9636\u4E3A 4\u3002"]
 };
-var PRIMES = /* @__PURE__ */ new Set([2, 3, 5, 7, 11]);
+var PRIMES = /* @__PURE__ */ new Set([2, 3, 5, 7, 11, 13, 17, 19]);
 function about(id, order) {
-  const row = ABOUT[id] ?? (PRIMES.has(order) ? ABOUT.Cp : ABOUT.C);
-  return row[lang === "en" ? 0 : 1];
+  const sides = /^D(\d+)$/.exec(id);
+  const row = ABOUT[id] ?? (sides ? ABOUT.D : PRIMES.has(order) ? ABOUT.Cp : ABOUT.C);
+  return row[lang === "en" ? 0 : 1].replace(/\{k\}/g, sides?.[1] ?? "");
 }
 
 // src/game/words.ts
 var L = (v) => LABELS[v];
 function hintText(h) {
-  const v = { r: h.r + 1, c: h.c + 1, v: L(h.v) };
+  const v = { r: L(h.r), c: L(h.c), v: L(h.v) };
   switch (h.kind) {
     case "cell":
       return t("hintCell", v);
@@ -1009,6 +1092,7 @@ function hintText(h) {
       return h.wrong.length ? t("hintSuppose", { ...v, wrong: h.wrong.map(L).join(getLang() === "zh" ? " \u6216 " : " or ") }) : t("hintSupposeNone", v);
   }
 }
+var mistakeText = (n, at) => t("hintMistake", { r: L(Math.floor(at / n)), c: L(at % n) });
 function conflictText(c) {
   if (c.kind === "assoc") return t("conflictAssoc", { a: L(c.a), b: L(c.b), c: L(c.c) });
   return t(c.kind === "row" ? "conflictRow" : "conflictCol");
@@ -1210,7 +1294,7 @@ function run(cmd, args) {
       const s = current();
       if (s.mode === "build") refuse("There are no hints when building: any group will do.");
       const a = advise(s) ?? refuse("Nothing left to hint at.");
-      if (a.kind === "mistake") return { ok: true, message: t("hintMistake", { r: Math.floor(a.at / s.n) + 1, c: a.at % s.n + 1 }), session: s, marks: [a.at], extra: { hint: { kind: "mistake", row: Math.floor(a.at / s.n), column: a.at % s.n } } };
+      if (a.kind === "mistake") return { ok: true, message: mistakeText(s.n, a.at), session: s, marks: [a.at], extra: { hint: { kind: "mistake", row: Math.floor(a.at / s.n), column: a.at % s.n } } };
       const h = a.hint, at = h.r * s.n + h.c;
       let message = hintText(h);
       if (flags.fill) {

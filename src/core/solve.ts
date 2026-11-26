@@ -17,11 +17,32 @@ function divisions(g: GroupInfo) {
   return d
 }
 
-/** every numbering phi (label -> element of g) under which all clues hold; visit returns true to stop */
-function numberings(g: GroupInfo, clues: readonly Clue[], order: number[], visit: (phi: Int8Array) => boolean): boolean {
+/** one element from each orbit of the group's automorphisms */
+const repsCache = new Map<string, number[]>()
+function orbitReps(g: GroupInfo): number[] {
+  let reps = repsCache.get(g.id)
+  if (!reps) {
+    const n = g.order, root = [...Array(n).keys()]
+    const find = (x: number): number => (root[x] === x ? x : (root[x] = find(root[x])))
+    const all: Clue[] = []
+    for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) all.push([a, b, g.table[a * n + b]])
+    // an automorphism is a numbering of the group by itself
+    numberings(g, all, root.slice(), false, (phi) => { for (let x = 0; x < n; x++) root[find(x)] = find(phi[x]); return false })
+    repsCache.set(g.id, (reps = [...new Set(root.map((_, x) => find(x)))]))
+  }
+  return reps
+}
+
+/**
+ * Every numbering phi (label -> element of g) under which all clues hold; visit returns true to stop.
+ * With `upToSymmetry` the first label is only tried on one element per automorphism orbit: a numbering followed by an
+ * automorphism gives the very same table, so no table is missed and there is less to search.
+ */
+function numberings(g: GroupInfo, clues: readonly Clue[], order: number[], upToSymmetry: boolean, visit: (phi: Int8Array) => boolean): boolean {
   const n = g.order, M = g.table, { L, R } = divisions(g)
   const phi = new Int8Array(n).fill(-1), used = new Uint8Array(n)
   const trail: number[] = []
+  const everything = [...Array(n).keys()], first = upToSymmetry ? orbitReps(g) : everything
   const set = (label: number, el: number) => {
     if (used[el]) return false
     phi[label] = el; used[el] = 1; trail.push(label); return true
@@ -40,19 +61,19 @@ function numberings(g: GroupInfo, clues: readonly Clue[], order: number[], visit
     }
     return true
   }
-  const rec = (): boolean => {
+  const rec = (depth: number): boolean => {
     const label = order.find((x) => phi[x] < 0)
     if (label === undefined) return visit(phi)
-    for (let el = 0; el < n; el++) {
+    for (const el of depth === 0 ? first : everything) {
       if (used[el]) continue
       const mark = trail.length
       set(label, el)
-      if (propagate() && rec()) return true
+      if (propagate() && rec(depth + 1)) return true
       while (trail.length > mark) { const x = trail.pop()!; used[phi[x]] = 0; phi[x] = -1 }
     }
     return false
   }
-  return rec()
+  return rec(0)
 }
 
 export interface Completion { table: Int8Array; group: GroupInfo }
@@ -66,7 +87,7 @@ export function tables(n: number, clues: readonly Clue[], limit = 2): Completion
   for (const g of GROUPS) {
     if (g.order !== n) continue
     const M = g.table
-    const stop = numberings(g, clues, order, (phi) => {
+    const stop = numberings(g, clues, order, true, (phi) => {
       const inv = new Int8Array(n)
       for (let i = 0; i < n; i++) inv[phi[i]] = i
       const t = new Int8Array(n * n)

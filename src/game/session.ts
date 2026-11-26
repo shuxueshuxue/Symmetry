@@ -2,7 +2,7 @@
 // The web page and the terminal are two front ends over this.
 import { groupsOfOrder, isGroupTable, relabel, type GroupInfo } from '../core/groups.ts'
 import { conflicts, forced, hint, identify, type Conflict, type Hint } from '../core/solve.ts'
-import { DIFFICULTIES, generate, mulberry32, type Difficulty } from '../core/generate.ts'
+import { DIFFICULTIES, generate, mulberry32, type Difficulty, type Puzzle } from '../core/generate.ts'
 
 interface Snapshot { cells: Int8Array; given: Uint8Array; solution: Int8Array | undefined; perm: number[] }
 
@@ -54,7 +54,12 @@ export const randomSeed = () => (Date.now() ^ (Math.random() * 2 ** 31)) >>> 0
 /** undefined when no group of this order has a puzzle of this difficulty */
 export function newPuzzle(n: number, difficulty: Difficulty, seed: number = randomSeed()): Session | undefined {
   const p = generate(n, difficulty, mulberry32(seed))
-  if (!p) return undefined
+  return p && sessionFrom(p, seed)
+}
+
+/** a session for a puzzle made elsewhere (another thread, say) with this seed */
+export function sessionFrom(p: Puzzle, seed: number): Session {
+  const n = p.n, difficulty = p.difficulty
   const cells = new Int8Array(n * n).fill(-1), given = new Uint8Array(n * n)
   for (const [r, c, v] of p.givens) { cells[r * n + c] = v; given[r * n + c] = 1 }
   return { mode: 'puzzle', n, difficulty, code: puzzleCode(n, difficulty, seed), cells, given, solution: p.solution, perm: [...Array(n).keys()], history: [], hints: 0, solved: undefined }

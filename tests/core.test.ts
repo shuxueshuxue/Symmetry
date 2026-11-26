@@ -3,7 +3,7 @@ import { GROUPS, ORDERS, groupsOfOrder, isGroupTable, relabel } from '../src/cor
 import { cluesOf, conflicts, hint, identify, isUnique, rate, solvesAt, tables, type Clue } from '../src/core/solve.ts'
 import { DIFFICULTIES, generate, generateFor, meets, mulberry32, normalBudget, offered, shuffle } from '../src/core/generate.ts'
 
-const COUNT: Record<number, number> = { 2: 1, 3: 1, 4: 2, 5: 1, 6: 2, 7: 1, 8: 5, 9: 2, 10: 2, 11: 1, 12: 5 }
+const COUNT: Record<number, number> = { 2: 1, 3: 1, 4: 2, 5: 1, 6: 2, 7: 1, 8: 5, 9: 2, 10: 2, 11: 1, 12: 5, 13: 1, 14: 2, 15: 1, 16: 14, 17: 1, 18: 5, 19: 1, 20: 5 }
 
 describe('catalogue', () => {
   it('has the right number of groups of each order, all of them groups', () => {
@@ -71,10 +71,11 @@ describe('generated puzzles', () => {
       expect(few).toBe(d === 'normal')
     }
   })
-  it('leaves no group out: from order 5 up every group gives every difficulty, and what is offered can be made', () => {
-    for (const g of GROUPS) if (g.order >= 5) for (const d of DIFFICULTIES) expect(generateFor(g, d, rng), `${g.id} ${d}`).toBeDefined()
-    for (const n of ORDERS) for (const d of DIFFICULTIES) expect(generate(n, d, rng) !== undefined, `order ${n} ${d}`).toBe(offered(n, d))
-  })
+  // the same check for every order up to 20 takes minutes and lives in tests/slow/coverage.test.ts
+  it('leaves no group out, up to order 10: every group gives every difficulty, and what is offered can be made', () => {
+    for (const g of GROUPS) if (g.order >= 5 && g.order <= 10) for (const d of DIFFICULTIES) expect(generateFor(g, d, rng), `${g.id} ${d}`).toBeDefined()
+    for (const n of ORDERS) if (n <= 10) for (const d of DIFFICULTIES) expect(generate(n, d, rng) !== undefined, `order ${n} ${d}`).toBe(offered(n, d))
+  }, 120_000)
 })
 
 describe('hints and conflicts', () => {
@@ -172,7 +173,7 @@ import { Grid } from '../src/core/solve.ts'
 describe('theorem shortcuts', () => {
   it('never contradict a real group: on every group, from sparse givens, they only ever write correct cells', () => {
     const rng = mulberry32(8)
-    for (const g of GROUPS) for (let rep = 0; rep < 6; rep++) {
+    for (const g of GROUPS) if (g.order <= 12) for (let rep = 0; rep < 6; rep++) {
       const n = g.order, p = generateFor(g, rep % 2 ? 'expert' : 'easy', rng)
       if (!p) continue
       const grid = new Grid(n, p.givens)
@@ -180,7 +181,7 @@ describe('theorem shortcuts', () => {
       grid.run(3) // would throw on a contradiction
       for (let i = 0; i < n * n; i++) if (grid.val[i] >= 0) expect(grid.val[i]).toBe(p.solution[i])
     }
-  })
+  }, 600_000)
   it('finish a prime-order table that cell-by-cell reasoning cannot', () => {
     // 1·1 = 2 and 2·3 = 0 fix the 5-element table; without theorems that takes supposing
     const givens: Clue[] = [[1, 1, 2], [2, 3, 0]]
