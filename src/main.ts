@@ -21,6 +21,8 @@ interface Game extends Session {
   marks: number[]    // cells a hint points at
   target: number     // the cell a hint is about, or -1
   say: { text: string; tone: '' | 'bad' | 'tip' }
+  /** on a small screen, whether the note is unfolded */
+  info: boolean
   done: { group: GroupInfo; isNew: boolean; newSubgroups: GroupInfo[] } | undefined
   /** what should animate on the next draw, and only that one */
   fx: { fresh: boolean; put: number[]; hint: boolean; bad: boolean; won: boolean }
@@ -34,6 +36,11 @@ let tab: Tab = 'puzzles'
 let game: Game | undefined
 /** the screen has just changed, so it may make an entrance */
 let fresh = true
+/** which group the collection is showing */
+let picked: string | undefined
+
+/** A small window has no room for a side column: what the game has to say goes in a note that unfolds. */
+const compact = () => window.innerWidth < 760 || window.innerHeight < 520
 
 const app = document.getElementById('app')!
 const L = (v: number) => LABELS[v]
@@ -42,7 +49,7 @@ const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
 // ------------------------------------------------------------------------------------------ game
 
 function open(session: Session) {
-  game = Object.assign(session, { sel: -1, head: -1, marks: [], target: -1, say: { text: t('pickCell'), tone: '' as const }, done: undefined,
+  game = Object.assign(session, { sel: -1, head: -1, marks: [], target: -1, say: { text: '', tone: '' as const }, info: false, done: undefined,
     fx: { fresh: true, put: [], hint: false, bad: false, won: false } })
   // the address names the puzzle, so it can be passed on
   history.replaceState(null, '', session.code ? '#' + session.code : location.pathname + location.search)
@@ -55,11 +62,11 @@ const start = (mode: Session['mode'], n: number) => open(mode === 'puzzle' ? new
 function show(g: Game, r: Report) {
   g.marks = []; g.target = -1
   g.fx.put = r.changed
-  if (r.conflicts.length) { g.say = { text: conflictText(r.conflicts[0]), tone: 'bad' }; g.fx.bad = true; return }
-  g.say = { text: r.full && !g.solved ? t('notGroupYet') : '', tone: r.full && !g.solved ? 'bad' : '' }
+  if (r.conflicts.length) { g.say = { text: conflictText(r.conflicts[0]), tone: 'bad' }; g.fx.bad = true; g.info = true; return }
+  g.say = { text: '', tone: '' }; g.info = false
   if (r.won) {
     g.done = { group: r.won, ...recordSolve(save, g, r.won) }
-    g.sel = -1; g.fx.won = true
+    g.sel = -1; g.fx.won = true; g.info = true
     store(save)
     audio.win(g.n, g.cells)
   }
@@ -95,7 +102,7 @@ function restart() {
   const g = game
   if (!g || !restartSession(g)) return
   g.done = undefined; g.sel = -1; g.head = -1; g.marks = []; g.target = -1; g.fx.fresh = true
-  g.say = { text: t('pickCell'), tone: '' }; render()
+  g.say = { text: '', tone: '' }; g.info = false; render()
 }
 
 function askHint() {
@@ -113,9 +120,9 @@ function askHint() {
     const h = a.hint
     g.target = h.r * n + h.c; g.sel = g.target; g.head = -1
     g.marks = h.kind === 'assoc' ? [h.a * n + h.b, h.b * n + h.c3, h.x * n + h.c3, h.a * n + h.y].filter((i) => i !== g.target) : []
-    g.say = { text: hintText(h) + ' ' + t('hintAgain'), tone: 'tip' }
+    g.say = { text: hintText(h), tone: 'tip' }
   }
-  g.fx.hint = true
+  g.fx.hint = true; g.info = true
   audio.hint(); render()
 }
 
@@ -168,13 +175,22 @@ function mini(g: GroupInfo): string {
   return `<svg class="seal" viewBox="-2 -2 100 100">${out}${new Pen(n).rect(0, 0, 96, 96, INK, 1.6, 2)}</svg>`
 }
 
-/** The home screen is a star chart: one cluster per order, one star per group of that order. Stars light up when found. */
-function chart(puzzles: boolean): string {
-  const tall = window.innerWidth < 700
-  const W = tall ? 400 : 1000, H = tall ? 1010 : 500, R = 27, ORBIT = 46
-  const pos = ORDERS.map((_, i) => tall
-    ? [112 + (i % 2) * 176, 78 + i * 86]
-    : [66 + i * 86.8, H / 2 - 6 + (i % 2 ? 1 : -1) * (72 + 46 * Math.sin(i * 1.9 + 0.6))])
+/** The home screen is a star chart: one cluster per order, one star per group of that order. Stars light up when found.
+ *  It is laid out for the space it is given: one long zigzag when wide, several rows when not. */
+function chart(puzzles: boolean, roomW: number, roomH: number): string {
+  const R = 27, ORBIT = 46, CELL_W = 104, CELL_H = 150
+  // the number of rows that lets the chart be drawn largest in this room
+  let rows = 1, best = 0
+  for (const k of [1, 2, 3, 4, 6]) {
+    const cols = Math.ceil(ORDERS.length / k), scale = Math.min(roomW / (cols * CELL_W), roomH / (k * CELL_H))
+    if (scale > best) { best = scale; rows = k }
+  }
+  const cols = Math.ceil(ORDERS.length / rows), W = cols * CELL_W, H = rows * CELL_H
+  const pos = ORDERS.map((_, i) => {
+    const row = Math.floor(i / cols), k = i % cols, back = row % 2 === 1 // alternate rows run right to left, so the path never crosses itself
+    const x = ((back ? cols - 1 - k : k) + 0.5) * CELL_W
+    return [x, (row + 0.5) * CELL_H - 8 + (k % 2 ? 1 : -1) * (rows === 1 ? 62 + 30 * Math.sin(i * 1.9 + 0.6) : 16)]
+  })
   const pen = new Pen(42)
   let paths = '', nodes = ''
   for (let i = 1; i < pos.length; i++) paths += pen.line(pos[i - 1][0], pos[i - 1][1], pos[i][0], pos[i][1], SOFT, 1.1, 1.6, 1)
@@ -189,16 +205,15 @@ function chart(puzzles: boolean): string {
         : `<circle class="star" cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="4.5" fill="none" stroke="${SOFT}" stroke-width="1.3" stroke-dasharray="2.5 3"/>`
       star++
     })
-    const names = gs.filter((g) => save.found.includes(g.id)).map((g) => g.name).join('  ')
     const count = save.solved[`${n}:${save.difficulty}`] ?? 0
     nodes += `<g class="node" data-start="${n}" role="button" tabindex="0" aria-label="${orderOf(n)}" style="transform-origin:${x}px ${y}px">
-      <circle class="halo" cx="${x}" cy="${y}" r="${ORBIT + 14}"/>
+      <circle class="halo" cx="${x}" cy="${y}" r="${ORBIT + 4}"/>
       <circle cx="${x}" cy="${y}" r="${R}" fill="${NIGHT}"/>${new Pen(n * 13).circle(x, y, R, INK, 1.8)}
       <text class="num" x="${x}" y="${y + 11}">${n}</text>
       <g class="orbit" style="transform-origin:${x}px ${y}px;animation-duration:${50 + i * 7}s;animation-direction:${i % 2 ? 'reverse' : 'normal'}">${stars}</g>
-      <text class="found" x="${x}" y="${y + ORBIT + 30}">${names}</text>${puzzles && count ? `<text class="times" x="${x + R + 4}" y="${y - R + 2}">×${count}</text>` : ''}</g>`
+      ${puzzles && count ? `<text class="times" x="${x + R + 2}" y="${y - R + 4}">×${count}</text>` : ''}</g>`
   })
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${paths}${nodes}</svg>`
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" width="${Math.floor(W * best)}" height="${Math.floor(H * best)}">${paths}${nodes}</svg>`
 }
 
 // ---------------------------------------------------------------------------------------- screens
@@ -206,34 +221,46 @@ function chart(puzzles: boolean): string {
 function top(): string {
   const nav = (id: Tab, key: Key) => `<button data-tab="${id}" class="${!game && tab === id ? 'on' : ''}">${t(key)}</button>`
   const flag = (on: boolean) => `<b>${t(on ? 'on' : 'off')}</b>`
-  const toggles = `<div class="toggles"><button data-toggle="sound">${t('sound')} ${flag(save.sound)}</button><button data-toggle="lang">${getLang() === 'en' ? '中文' : 'English'}</button></div>`
+  const toggles = `<div class="toggles"><button data-toggle="sound">${t('sound')} ${flag(save.sound)}</button><button data-toggle="lang">${getLang() === 'en' ? '中文' : 'EN'}</button></div>`
   if (game) {
     // while a table is open the bar is just: back, what this is, and the switches. The group has no name until it is solved.
-    const g = game, what = g.done ? g.done.group.name : '???'
+    const g = game, what = g.done ? g.done.group.name : '???', small = compact()
     const title = g.mode === 'puzzle' ? `${orderOf(g.n)} · <b class="${g.done ? 'known' : 'unknown'}">${what}</b>` : `${t('build')} · ${orderOf(g.n)}`
+    // on a small screen the note is behind this button; a dot says there is something to read
+    const dot = g.say.tone === 'bad' ? ' bad' : g.say.tone === 'tip' || g.done ? ' tip' : ''
     return `<header class="top"><button data-back class="back" aria-label="${t('back')}">←</button><h2>${title}</h2>
-      <span class="meta">${g.mode === 'puzzle' ? t(g.difficulty) : ''}${g.hints ? ` · ${t('hintsUsed')} ${g.hints}` : ''}</span>
-      ${g.code ? `<button class="code" data-copy title="${t('copyLink')}">#${g.code}</button>` : ''}${toggles}</header>`
+      <span class="meta">${g.mode === 'puzzle' ? t(g.difficulty) : ''}${g.hints && !small ? ` · ${t('hintsUsed')} ${g.hints}` : ''}</span>
+      ${small ? `<button class="info${dot}${g.info ? ' open' : ''}" data-info aria-label="${t('info')}">i</button>`
+        : `${g.code ? `<button class="code" data-copy title="${t('copyLink')}">#${g.code}</button>` : ''}${toggles}`}</header>`
   }
   return `<header class="top"><button class="word" data-tab="puzzles">symmetry</button>
     <nav>${nav('puzzles', 'puzzles')}${nav('build', 'build')}${nav('collection', 'collection')}</nav>
     ${toggles}</header>`
 }
 
+/** every group as a small seal on a wall; one of them is shown in full */
+function shelf(): string {
+  const shown = GROUPS.find((g) => g.id === picked && save.found.includes(g.id))
+  const wall = GROUPS.map((g) => save.found.includes(g.id)
+    ? `<button class="tile${g === shown ? ' on' : ''}" data-pick="${g.id}" aria-label="${g.name}">${mini(g)}</button>`
+    : `<span class="tile missing" title="${orderOf(g.order)}">?</span>`).join('')
+  const card = shown
+    ? `<div class="entry">${mini(shown)}<div><div class="name">${shown.name}<small>${orderOf(shown.order)}</small></div><p>${esc(about(shown.id, shown.order))}</p></div></div>`
+    : `<div class="entry missing"><p>${t(save.found.length ? 'pickOne' : 'collectionIntro')}</p></div>`
+  return `<div class="shelf${fresh ? ' arrive' : ''}"><p class="count">${save.found.length} / ${GROUPS.length}</p><div class="wall">${wall}</div>${card}</div>`
+}
+
 function home(): string {
-  const arrive = fresh ? ' arrive' : ''
-  if (tab === 'collection') {
-    const entries = GROUPS.map((g) => save.found.includes(g.id)
-      ? `<div class="entry">${mini(g)}<div><div class="name">${g.name}<small>${orderOf(g.order)}</small></div><p>${esc(about(g.id, g.order))}</p></div></div>`
-      : `<div class="entry missing"><div class="q">?</div><div><div class="name">???<small>${orderOf(g.order)}</small></div><p>${t('notFound')}</p></div></div>`).join('')
-    return `<div class="shelf${arrive}"><p class="count">${save.found.length} / ${GROUPS.length}</p><p class="note">${t('collectionIntro')}</p><div class="collection">${entries}</div></div>`
-  }
-  const puzzles = tab === 'puzzles'
+  if (tab === 'collection') return shelf()
+  const puzzles = tab === 'puzzles', small = compact()
   const levels = DIFFICULTIES.map((d) => `<button data-level="${d}" class="${save.difficulty === d ? 'on' : ''}">${t(d)}</button>`).join('')
-  return `<div class="home${arrive}"><div class="intro"><p class="lede">${t(puzzles ? 'tagline' : 'buildIntro')}</p>
+  // the chart gets whatever the words leave; the words are measured in lines, generously
+  const w = window.innerWidth, h = window.innerHeight, pad = small ? 28 : 48
+  const words = (small ? 150 : 124) + (w < 420 ? 44 : 0) + (puzzles ? (small ? 78 : 44) : 0)
+  return `<div class="home${fresh ? ' arrive' : ''}"><div class="intro"><p class="lede">${t(puzzles ? 'tagline' : 'buildIntro')}</p>
     ${puzzles ? `<div class="levels">${levels}</div><p class="note">${t((save.difficulty + 'Note') as Key)}</p>` : ''}</div>
-    ${chart(puzzles)}
-    <div class="rules"><span>${t('rules')}</span><span>1 · ${t('rule1')}</span><span>2 · ${t('rule2')}</span></div></div>`
+    <div class="sky">${chart(puzzles, Math.min(w, 1080) - pad, Math.max(h - words - 60, 120))}</div>
+    <div class="rules"><span>1 · ${t('rule1')}</span><span>2 · ${t('rule2')}</span></div></div>`
 }
 
 function facts(g: Game): string {
@@ -246,7 +273,7 @@ function facts(g: Game): string {
     <dt>${t('elCommutes')}</dt><dd>${list(f.commutesWith)}</dd><dt>${t('elConj')}</dt><dd>${list(f.conjugates)}</dd></dl></div>`
 }
 
-function reveal(g: Game): string {
+function reveal(g: Game, small: boolean): string {
   const d = g.done!, n = g.n
   const counts = [...orderCounts(n, g.cells)].map(([o, k]) => `${o}: ${k}`).join(' · ')
   const chain = leadingNormalSubgroups(n, g.cells)
@@ -259,24 +286,38 @@ function reveal(g: Game): string {
   return `<div class="reveal${g.fx.won ? ' unseal' : ''}"><div class="who">${mini(d.group)}<div><div class="small">${t(g.mode === 'puzzle' ? 'itIs' : 'youMade')}</div>
     <div class="name">${name}</div>${d.isNew ? `<span class="new">${t('newFind')}</span>` : ''}</div></div>
     <p>${esc(about(d.group.id, n))}</p>
-    <p class="small">${t(d.group.abelian ? 'abelian' : 'nonAbelian')} · ${t('elementsOfOrder')} — ${counts}</p>
-    ${n > 3 ? `<p class="small">${t('arrange')}</p><p class="chain">${t('chain')}:<br>${steps}</p>${extra}` : ''}</div>`
+    <p class="small">${t(d.group.abelian ? 'abelian' : 'nonAbelian')} · ${t('elementsOfOrder')} ${counts}</p>
+    ${n > 3 ? `${small ? '' : `<p class="small">${t('arrange')}</p>`}<p class="chain">${t('chain')}:<br>${steps}</p>${extra}` : ''}</div>`
+}
+
+/** what the game has to say right now: the result, a message, or the facts about an element */
+function note(g: Game, small: boolean): string {
+  // on a small screen the note covers the buttons, so it carries the one that matters
+  if (g.done) return reveal(g, small) + (small ? `<div class="actions"><button data-act="next" class="main">${t(g.mode === 'puzzle' ? 'next' : 'restart')}</button></div>` : '')
+  const say = g.head >= 0 && !g.say.text ? t('swapHint') : g.say.text
+  const fill = g.say.tone === 'tip' && g.target >= 0 && g.cells[g.target] < 0 ? `<button class="fill" data-act="hint">${t('fillIn')}</button>` : ''
+  const about = facts(g)
+  if (!say && !about) return small ? `<div class="say">${t('rule1')}<br>${t('rule2')}</div>` : `<div class="say quiet">${t('pickCell')}</div>`
+  return (say ? `<div class="say ${g.say.tone}">${esc(say)}${fill}</div>` : '') + about
 }
 
 function play(g: Game): string {
-  const n = g.n
-  const chips = [...Array(n).keys()].map((v) => `<button data-put="${v}" style="background:${tint(v, n)};border-color:${stroke(v, n)};color:${glow(v, n)}">${L(v)}</button>`).join('')
-  const say = g.head >= 0 && !g.say.text ? t('swapHint') : g.say.text
-  return `<div class="play${g.fx.fresh ? ' unfold' : ''}"><div class="boardcol">${board(g)}${g.done ? '' : `<div class="chips">${chips}<button class="wide" data-put="-1">${t('erase')}</button></div>`}</div>
-    <div class="side">
-      ${g.done ? `<div class="actions"><button data-act="next" class="main">${t(g.mode === 'puzzle' ? 'next' : 'restart')}</button></div>${reveal(g)}` : `<div class="say ${g.say.tone}">${esc(say)}</div>
-      <div class="actions">
+  const n = g.n, small = compact()
+  // a small screen gets two rows of keys once one row would make them too narrow to press
+  const rows = small && n + 1 > 9 ? 2 : 1, perRow = Math.ceil((n + 1) / rows)
+  const keys = [...Array(n).keys()].map((v) => `<button data-put="${v}" style="background:${tint(v, n)};border-color:${stroke(v, n)};color:${glow(v, n)}">${L(v)}</button>`).join('')
+  const chips = g.done ? '' : `<div class="chips" style="--per-row:${perRow}">${keys}<button class="wide" data-put="-1" aria-label="${t('erase')}">⌫</button></div>`
+  const actions = g.done
+    ? `<div class="actions"><button data-act="next" class="main">${t(g.mode === 'puzzle' ? 'next' : 'restart')}</button></div>`
+    : `<div class="actions">
         ${g.mode === 'puzzle' ? `<button data-act="hint">${t('hint')}</button>` : ''}<button data-act="undo" ${g.history.length ? '' : 'disabled'}>${t('undo')}</button><button data-act="restart" ${g.history.length ? '' : 'disabled'}>${t('restart')}</button>
         ${g.mode === 'puzzle' ? `<button data-act="next">${t('next')}</button>` : ''}
         ${g.mode === 'build' ? `<label title="${t('autofillNote')}"><input type="checkbox" data-autofill ${save.autofill ? 'checked' : ''}>${t('autofill')}</label>` : ''}
-      </div>`}
-      ${facts(g)}
-    </div></div>`
+      </div>`
+  const unfold = g.fx.fresh ? ' unfold' : ''
+  if (small) return `<div class="play small${unfold}" style="--key-rows:${g.done ? 0 : rows}"><div class="boardcol">${board(g)}</div>
+    <div class="controls">${chips}${actions}</div>${g.info ? `<div class="sheet" data-layer>${note(g, true)}</div>` : ''}</div>`
+  return `<div class="play${unfold}"><div class="boardcol">${board(g)}${chips}</div><div class="side">${note(g, false)}${actions}</div></div>`
 }
 
 function leave() {
@@ -302,7 +343,7 @@ function boardClick(ev: MouseEvent, svg: SVGSVGElement) {
   if (r < 0 || c < 0) {
     const x = r < 0 ? c : r
     if (g.head >= 0 && g.head !== x) return swap(g.head, x)
-    g.head = g.head === x ? -1 : x; g.sel = -1
+    g.head = g.head === x ? -1 : x; g.sel = -1; g.info = false
   } else {
     g.head = -1
     g.sel = g.sel === r * n + c ? -1 : r * n + c
@@ -328,6 +369,8 @@ app.addEventListener('click', (ev) => {
   else if (d.act === 'undo') undo()
   else if (d.act === 'restart') restart()
   else if (d.act === 'next' && game) start(game.mode, game.n)
+  else if (d.pick) { picked = d.pick; render() }
+  else if ('info' in d && game) { game.info = !game.info; render() }
   else if ('copy' in d && game?.code) void navigator.clipboard?.writeText(location.href)
   else if (d.toggle === 'sound') { save.sound = audio.soundOn = !save.sound; store(save); render() }
   else if (d.toggle === 'lang') { save.lang = getLang() === 'en' ? 'zh' : 'en'; setLang(save.lang); store(save); if (game && !game.say.tone) game.say.text = ''; render() }
@@ -353,12 +396,22 @@ window.addEventListener('keydown', (ev) => {
 })
 
 // the chart is laid out for the window's shape
-let wasTall = window.innerWidth < 700
-window.addEventListener('resize', () => { const tall = window.innerWidth < 700; if (tall !== wasTall && !game) { wasTall = tall; render() } })
+window.addEventListener('resize', () => render())
+// a touch anywhere outside the unfolded note folds it away; the touch still does what it would have done
+document.addEventListener('pointerdown', (ev) => {
+  const el = ev.target as Element
+  if (game?.info && compact() && !el.closest('.sheet, [data-info]')) { game.info = false; app.querySelector('.sheet')?.remove(); app.querySelector('.info')?.classList.remove('open') }
+}, true)
 // a star cluster can be opened from the keyboard too
 app.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') (ev.target as Element).closest<SVGElement>('.node')?.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
 
 startSky(document.getElementById('sky') as HTMLCanvasElement)
 // an address like …/#8-n-k3f9 opens that puzzle
-const named = parseCode(location.hash.slice(1))
-if (named) { save.difficulty = named.difficulty; open(newPuzzle(named.n, named.difficulty, named.seed)) } else render()
+function follow() {
+  const named = parseCode(location.hash.slice(1))
+  if (!named) return false
+  if (game?.code !== location.hash.slice(1)) { save.difficulty = named.difficulty; open(newPuzzle(named.n, named.difficulty, named.seed)) }
+  return true
+}
+window.addEventListener('hashchange', follow)
+if (!follow()) render()

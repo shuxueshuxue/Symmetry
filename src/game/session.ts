@@ -35,12 +35,14 @@ export interface Report {
 
 // ------------------------------------------------------------------ puzzle codes: "8-n-k3f9"
 
-export const puzzleCode = (n: number, difficulty: Difficulty, seed: number) => `${n}-${difficulty[0]}-${(seed >>> 0).toString(36)}`
+// easy and expert share an initial, so expert is x
+const LETTER: Record<Difficulty, string> = { easy: 'e', normal: 'n', expert: 'x' }
+export const puzzleCode = (n: number, difficulty: Difficulty, seed: number) => `${n}-${LETTER[difficulty]}-${(seed >>> 0).toString(36)}`
 
 export function parseCode(code: string): { n: number; difficulty: Difficulty; seed: number } | undefined {
   const m = /^(\d+)-([a-z])-([0-9a-z]+)$/.exec(code.trim().toLowerCase())
   if (!m) return undefined
-  const n = +m[1], difficulty = DIFFICULTIES.find((d) => d[0] === m[2]), seed = parseInt(m[3], 36)
+  const n = +m[1], difficulty = DIFFICULTIES.find((d) => LETTER[d] === m[2]), seed = parseInt(m[3], 36)
   if (!difficulty || !groupsOfOrder(n).length || !Number.isFinite(seed)) return undefined
   return { n, difficulty, seed: seed >>> 0 }
 }

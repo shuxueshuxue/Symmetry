@@ -117,6 +117,8 @@ describe('sessions', () => {
     expect([...a.cells]).toEqual([...b.cells])
     expect(parseCode(a.code!)).toEqual({ n: 8, difficulty: 'normal', seed: 12345 })
     expect(parseCode('nonsense')).toBeUndefined()
+    expect(parseCode(puzzleCode(8, 'expert', 5))?.difficulty).toBe('expert')
+    expect(parseCode(puzzleCode(8, 'easy', 5))?.difficulty).toBe('easy')
   })
   it('hints lead to the end, and the win is reported once', () => {
     const s = newPuzzle(6, 'easy', 7)
