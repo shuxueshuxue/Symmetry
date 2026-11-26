@@ -1,13 +1,13 @@
 import type { Difficulty } from './core/generate.ts'
 import type { Lang } from './i18n.ts'
+import type { Progress } from './game/progress.ts'
 
-export interface Save {
+/** progress, plus this front end's own settings; kept in the browser */
+export interface Save extends Progress {
   lang: Lang
   difficulty: Difficulty
   sound: boolean
   autofill: boolean
-  found: string[]
-  solved: Record<string, number> // "<order>:<difficulty>" -> count
 }
 
 const KEY = 'symmetry.v2'

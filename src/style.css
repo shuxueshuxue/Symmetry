@@ -30,6 +30,9 @@ header.top h2 .unknown { color: var(--soft); letter-spacing: 3px; animation: bre
 header.top h2 .known { color: var(--blue); text-shadow: 0 0 14px rgba(116, 192, 252, .7); }
 header.top .back { font-size: 24px; line-height: 1; padding: 0 4px; }
 header.top .meta { color: var(--soft); font-size: 15px; }
+header.top .code { font-family: var(--mono); font-size: 13px; color: var(--soft); opacity: .7; }
+header.top .code:hover { color: var(--blue); opacity: 1; }
+header.top .code:active { transform: translateY(1px); }
 @keyframes breathe { 50% { opacity: .35; } }
 
 /* ------------------------------------------------------------------ home: a star chart */

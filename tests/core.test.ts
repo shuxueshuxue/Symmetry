@@ -107,3 +107,47 @@ describe('structure', () => {
     expect([f.identity, f.order, f.inverse]).toEqual([0, 4, 6])
   })
 })
+
+import { advise, fromJSON, newPuzzle, parseCode, place, puzzleCode, swapElements, toJSON, undo } from '../src/game/session.ts'
+
+describe('sessions', () => {
+  it('a code names one puzzle', () => {
+    const a = newPuzzle(8, 'normal', 12345), b = newPuzzle(8, 'normal', 12345)
+    expect(a.code).toBe(puzzleCode(8, 'normal', 12345))
+    expect([...a.cells]).toEqual([...b.cells])
+    expect(parseCode(a.code!)).toEqual({ n: 8, difficulty: 'normal', seed: 12345 })
+    expect(parseCode('nonsense')).toBeUndefined()
+  })
+  it('hints lead to the end, and the win is reported once', () => {
+    const s = newPuzzle(6, 'easy', 7)
+    let won
+    for (let i = 0; i < 40 && !s.solved; i++) {
+      const a = advise(s)!
+      expect(a.kind).toBe('step')
+      if (a.kind === 'step') won = place(s, a.hint.r * 6 + a.hint.c, a.hint.v)!.won
+    }
+    expect(s.solved).toBeDefined()
+    expect(won?.id).toBe(s.solved!.id)
+    expect(place(s, 0, 0)).toBeUndefined() // a finished table does not change
+  })
+  it('refuses to overwrite a given, reports a conflict, and undoes', () => {
+    const s = newPuzzle(6, 'easy', 7), given = s.given.indexOf(1), free = s.cells.indexOf(-1)
+    expect(place(s, given, 0)).toBeUndefined()
+    const row = Math.floor(free / 6), taken = [...s.cells.slice(row * 6, row * 6 + 6)].find((v) => v >= 0)
+    if (taken !== undefined) expect(place(s, free, taken)!.conflicts.length).toBeGreaterThan(0)
+    undo(s)
+    expect(s.cells[free]).toBe(-1)
+  })
+  it('a saved session holds no solution and comes back the same, even after renumbering', () => {
+    const s = newPuzzle(8, 'easy', 99)
+    const a = advise(s)!
+    if (a.kind === 'step') place(s, a.hint.r * 8 + a.hint.c, a.hint.v)
+    swapElements(s, 1, 5)
+    const text = JSON.stringify(toJSON(s))
+    expect(text).not.toContain('solution')
+    const back = fromJSON(JSON.parse(text))
+    expect([...back.cells]).toEqual([...s.cells])
+    expect([...back.solution!]).toEqual([...s.solution!])
+    expect(back.history.length).toBe(s.history.length)
+  })
+})

@@ -1,7 +1,10 @@
 import './style.css'
-import { GROUPS, LABELS, ORDERS, groupsOfOrder, isGroupTable, relabel, type GroupInfo } from './core/groups.ts'
-import { conflicts, forced, hint, identify, type Conflict, type Hint } from './core/solve.ts'
-import { DIFFICULTIES, generate, mulberry32, type Difficulty } from './core/generate.ts'
+import { GROUPS, LABELS, ORDERS, groupsOfOrder, type GroupInfo } from './core/groups.ts'
+import { conflicts } from './core/solve.ts'
+import { DIFFICULTIES, type Difficulty } from './core/generate.ts'
+import { advise, newBuild, newPuzzle, parseCode, place, restart as restartSession, swapElements, undo as undoMove, type Report, type Session } from './game/session.ts'
+import { recordArrangement, recordSolve } from './game/progress.ts'
+import { conflictText, hintText } from './game/words.ts'
 import { elementFacts, leadingNormalSubgroups, orderCounts } from './core/structure.ts'
 import { about, getLang, orderOf, setLang, t, type Key } from './i18n.ts'
 import { load, store } from './store.ts'
@@ -11,19 +14,10 @@ import { startSky } from './sky.ts'
 
 type Tab = 'puzzles' | 'build' | 'collection'
 
-interface Snapshot { cells: Int8Array; given: Uint8Array; solution: Int8Array | undefined }
-
-interface Game {
-  mode: 'puzzle' | 'build'
-  n: number
-  difficulty: Difficulty
-  cells: Int8Array
-  given: Uint8Array
-  solution: Int8Array | undefined
+/** a session, plus what only the screen cares about */
+interface Game extends Session {
   sel: number        // selected cell, or -1
   head: number       // selected header element, or -1
-  history: Snapshot[]
-  hints: number
   marks: number[]    // cells a hint points at
   target: number     // the cell a hint is about, or -1
   say: { text: string; tone: '' | 'bad' | 'tip' }
@@ -35,7 +29,6 @@ interface Game {
 const save = load()
 setLang(save.lang)
 audio.soundOn = save.sound
-const rng = mulberry32((Date.now() ^ (Math.random() * 2 ** 31)) >>> 0)
 
 let tab: Tab = 'puzzles'
 let game: Game | undefined
@@ -48,119 +41,61 @@ const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
 
 // ------------------------------------------------------------------------------------------ game
 
-function start(mode: Game['mode'], n: number) {
-  const cells = new Int8Array(n * n).fill(-1), given = new Uint8Array(n * n)
-  let solution: Int8Array | undefined
-  if (mode === 'puzzle') {
-    const p = generate(n, save.difficulty, rng)
-    for (const [r, c, v] of p.givens) { cells[r * n + c] = v; given[r * n + c] = 1 }
-    solution = p.solution
-  }
-  game = { mode, n, difficulty: save.difficulty, cells, given, solution, sel: -1, head: -1, history: [], hints: 0, marks: [], target: -1, say: { text: t('pickCell'), tone: '' }, done: undefined,
-    fx: { fresh: true, put: [], hint: false, bad: false, won: false } }
+function open(session: Session) {
+  game = Object.assign(session, { sel: -1, head: -1, marks: [], target: -1, say: { text: t('pickCell'), tone: '' as const }, done: undefined,
+    fx: { fresh: true, put: [], hint: false, bad: false, won: false } })
+  // the address names the puzzle, so it can be passed on
+  history.replaceState(null, '', session.code ? '#' + session.code : location.pathname + location.search)
   render()
 }
 
-function remember(g: Game) {
-  g.history.push({ cells: g.cells.slice(), given: g.given.slice(), solution: g.solution?.slice() })
-  if (g.history.length > 400) g.history.shift()
-}
+const start = (mode: Session['mode'], n: number) => open(mode === 'puzzle' ? newPuzzle(n, save.difficulty) : newBuild(n))
 
-function describe(c: Conflict): string {
-  if (c.kind === 'assoc') return t('conflictAssoc', { a: L(c.a), b: L(c.b), c: L(c.c) })
-  return t(c.kind === 'row' ? 'conflictRow' : 'conflictCol')
-}
-
-/** after any change to the cells: mark what is broken, or notice that the table is finished */
-function settle(g: Game) {
+/** show what a move did: what is broken, or that the table is finished */
+function show(g: Game, r: Report) {
   g.marks = []; g.target = -1
-  const broken = conflicts(g.n, g.cells)
-  if (broken.length) { g.say = { text: describe(broken[0]), tone: 'bad' }; g.fx.bad = true; return false }
-  g.say = { text: '', tone: '' }
-  if (!g.cells.includes(-1)) {
-    if (isGroupTable(g.cells, g.n)) finish(g)
-    else g.say = { text: t('notGroupYet'), tone: 'bad' }
-  }
-  return true
-}
-
-function finish(g: Game) {
-  const group = identify(g.cells, g.n)
-  if (!group) return
-  const isNew = !save.found.includes(group.id)
-  if (isNew) save.found.push(group.id)
-  if (g.mode === 'puzzle') { const k = `${g.n}:${g.difficulty}`; save.solved[k] = (save.solved[k] ?? 0) + 1 }
-  g.done = { group, isNew, newSubgroups: [] }
-  g.sel = -1; g.fx.won = true
-  collectSubgroups(g)
-  store(save)
-  audio.win(g.n, g.cells)
-}
-
-/** arranging a normal subgroup to the front finds that subgroup too */
-function collectSubgroups(g: Game) {
-  for (const step of leadingNormalSubgroups(g.n, g.cells)) {
-    if (step.group && !save.found.includes(step.group.id)) { save.found.push(step.group.id); g.done!.newSubgroups.push(step.group) }
+  g.fx.put = r.changed
+  if (r.conflicts.length) { g.say = { text: conflictText(r.conflicts[0]), tone: 'bad' }; g.fx.bad = true; return }
+  g.say = { text: r.full && !g.solved ? t('notGroupYet') : '', tone: r.full && !g.solved ? 'bad' : '' }
+  if (r.won) {
+    g.done = { group: r.won, ...recordSolve(save, g, r.won) }
+    g.sel = -1; g.fx.won = true
+    store(save)
+    audio.win(g.n, g.cells)
   }
 }
 
 function put(at: number, v: number) {
   const g = game
-  if (!g || g.done || at < 0 || g.given[at] || g.cells[at] === v) return
-  remember(g)
-  const before = g.cells.slice()
-  g.cells[at] = v
-  const ok = settle(g)
-  if (v < 0) audio.erase(); else if (ok) audio.place(v); else audio.wrong()
-  if (ok && v >= 0 && g.mode === 'build' && save.autofill && !g.done) {
-    const f = forced(g.n, g.cells)
-    if (f) { g.cells.set(f); settle(g) }
-  }
-  g.cells.forEach((x, i) => { if (x >= 0 && x !== before[i]) g.fx.put.push(i) })
+  if (!g) return
+  const r = place(g, at, v, { autofill: g.mode === 'build' && save.autofill })
+  if (!r) return
+  show(g, r)
+  if (v < 0) audio.erase(); else if (r.conflicts.length) audio.wrong(); else if (!r.won) audio.place(v)
   render()
 }
 
 function swap(a: number, b: number) {
   const g = game!
-  remember(g)
-  const n = g.n, p = [...Array(n).keys()]
-  p[a] = b; p[b] = a
-  g.cells = relabel(g.cells, n, p)
-  if (g.solution) g.solution = relabel(g.solution, n, p)
-  const given = new Uint8Array(n * n)
-  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) given[p[r] * n + p[c]] = g.given[r * n + c]
-  g.given = given
+  swapElements(g, a, b)
   g.head = -1; g.sel = -1; g.marks = []; g.target = -1
   audio.swap(a, b)
-  if (g.done) { collectSubgroups(g); store(save) }
+  if (g.done) { g.done.newSubgroups.push(...recordArrangement(save, g)); store(save) }
   render()
 }
 
 function undo() {
-  const g = game, s = g?.history.pop()
-  if (!g || !s || g.done) return
-  g.cells = s.cells; g.given = s.given; g.solution = s.solution
-  settle(g); audio.erase(); render()
+  const g = game, r = g && undoMove(g)
+  if (!g || !r) return
+  show(g, r); g.fx.put = []
+  audio.erase(); render()
 }
 
 function restart() {
   const g = game
-  if (!g || !g.history.length) return
-  const s = g.history[0]
-  g.cells = s.cells; g.given = s.given; g.solution = s.solution; g.history = []; g.done = undefined; g.sel = -1; g.head = -1; g.fx.fresh = true
-  settle(g); g.say = { text: t('pickCell'), tone: '' }; render()
-}
-
-function hintText(h: Hint): string {
-  const v = { r: h.r + 1, c: h.c + 1, v: L(h.v) }
-  switch (h.kind) {
-    case 'cell': return t('hintCell', v)
-    case 'row': return t('hintRow', v)
-    case 'col': return t('hintCol', v)
-    case 'assoc': return t('hintAssoc', { a: L(h.a), b: L(h.b), c: L(h.c3), x: L(h.x), y: L(h.y), v: L(h.v) })
-    case 'chain': return t('hintChain', v)
-    case 'suppose': return h.wrong.length ? t('hintSuppose', { ...v, wrong: h.wrong.map(L).join(getLang() === 'zh' ? ' 或 ' : ' or ') }) : t('hintSupposeNone', v)
-  }
+  if (!g || !restartSession(g)) return
+  g.done = undefined; g.sel = -1; g.head = -1; g.marks = []; g.target = -1; g.fx.fresh = true
+  g.say = { text: t('pickCell'), tone: '' }; render()
 }
 
 function askHint() {
@@ -169,14 +104,13 @@ function askHint() {
   const n = g.n
   // a second press on the same hint fills the cell in
   if (g.target >= 0 && g.cells[g.target] < 0 && g.say.tone === 'tip') return put(g.target, g.solution[g.target])
-  const wrong = g.cells.findIndex((v, i) => v >= 0 && v !== g.solution![i])
-  if (wrong >= 0) {
-    g.marks = [wrong]; g.target = -1; g.sel = wrong
-    g.say = { text: t('hintMistake', { r: Math.floor(wrong / n) + 1, c: (wrong % n) + 1 }), tone: 'bad' }
+  const a = advise(g)
+  if (!a) return
+  if (a.kind === 'mistake') {
+    g.marks = [a.at]; g.target = -1; g.sel = a.at
+    g.say = { text: t('hintMistake', { r: Math.floor(a.at / n) + 1, c: (a.at % n) + 1 }), tone: 'bad' }
   } else {
-    const h = hint(n, g.cells, g.solution)
-    if (!h) return
-    g.hints++
+    const h = a.hint
     g.target = h.r * n + h.c; g.sel = g.target; g.head = -1
     g.marks = h.kind === 'assoc' ? [h.a * n + h.b, h.b * n + h.c3, h.x * n + h.c3, h.a * n + h.y].filter((i) => i !== g.target) : []
     g.say = { text: hintText(h) + ' ' + t('hintAgain'), tone: 'tip' }
@@ -278,7 +212,8 @@ function top(): string {
     const g = game, what = g.done ? g.done.group.name : '???'
     const title = g.mode === 'puzzle' ? `${orderOf(g.n)} · <b class="${g.done ? 'known' : 'unknown'}">${what}</b>` : `${t('build')} · ${orderOf(g.n)}`
     return `<header class="top"><button data-back class="back" aria-label="${t('back')}">←</button><h2>${title}</h2>
-      <span class="meta">${g.mode === 'puzzle' ? t(g.difficulty) : ''}${g.hints ? ` · ${t('hintsUsed')} ${g.hints}` : ''}</span>${toggles}</header>`
+      <span class="meta">${g.mode === 'puzzle' ? t(g.difficulty) : ''}${g.hints ? ` · ${t('hintsUsed')} ${g.hints}` : ''}</span>
+      ${g.code ? `<button class="code" data-copy title="${t('copyLink')}">#${g.code}</button>` : ''}${toggles}</header>`
   }
   return `<header class="top"><button class="word" data-tab="puzzles">symmetry</button>
     <nav>${nav('puzzles', 'puzzles')}${nav('build', 'build')}${nav('collection', 'collection')}</nav>
@@ -344,6 +279,11 @@ function play(g: Game): string {
     </div></div>`
 }
 
+function leave() {
+  game = undefined; fresh = true
+  history.replaceState(null, '', location.pathname + location.search)
+}
+
 /** Every change redraws the screen, so anything that should move only once is flagged, drawn, and unflagged. */
 function render() {
   app.classList.toggle('playing', !!game)
@@ -378,16 +318,17 @@ app.addEventListener('click', (ev) => {
   const b = el.closest<HTMLElement | SVGElement>('[data-start], button, input')
   if (!b) return
   const d = b.dataset
-  if (d.tab) { game = undefined; tab = d.tab as Tab; fresh = true; render() }
+  if (d.tab) { leave(); tab = d.tab as Tab; render() }
   else if (d.level) { save.difficulty = d.level as Difficulty; store(save); render() }
   else if (d.start) start(tab === 'build' ? 'build' : 'puzzle', +d.start)
   else if (d.put !== undefined && game) put(game.sel, +d.put)
-  else if ('back' in d) { tab = game?.mode === 'build' ? 'build' : 'puzzles'; game = undefined; fresh = true; render() }
+  else if ('back' in d) { tab = game?.mode === 'build' ? 'build' : 'puzzles'; leave(); render() }
   else if ('autofill' in d) { save.autofill = (b as HTMLInputElement).checked; store(save) }
   else if (d.act === 'hint') askHint()
   else if (d.act === 'undo') undo()
   else if (d.act === 'restart') restart()
   else if (d.act === 'next' && game) start(game.mode, game.n)
+  else if ('copy' in d && game?.code) void navigator.clipboard?.writeText(location.href)
   else if (d.toggle === 'sound') { save.sound = audio.soundOn = !save.sound; store(save); render() }
   else if (d.toggle === 'lang') { save.lang = getLang() === 'en' ? 'zh' : 'en'; setLang(save.lang); store(save); if (game && !game.say.tone) game.say.text = ''; render() }
 })
@@ -418,4 +359,6 @@ window.addEventListener('resize', () => { const tall = window.innerWidth < 700; 
 app.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') (ev.target as Element).closest<SVGElement>('.node')?.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
 
 startSky(document.getElementById('sky') as HTMLCanvasElement)
-render()
+// an address like …/#8-n-k3f9 opens that puzzle
+const named = parseCode(location.hash.slice(1))
+if (named) { save.difficulty = named.difficulty; open(newPuzzle(named.n, named.difficulty, named.seed)) } else render()
